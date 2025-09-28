@@ -3,7 +3,7 @@
   
 Composition 組合，是「某物裡面有另一個物件」，更白話說就是「一個類別擁有另一個類別作為屬性」，跟繼承沒關係。
 
-- has-a →
+- ==has-a== →
 - Car has a Engine
 - Dog has a Tail
 

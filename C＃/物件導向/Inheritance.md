@@ -4,7 +4,7 @@
 
 繼承就是一個類別（class）可以「延伸」另一個類別，取得它的屬性（fields/properties）和方法（methods），不用重新寫一遍。
 
-- is-a →
+- ==is-a== →
 - Dog is a Animal
 - Car is a Vehicle
 
