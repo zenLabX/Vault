@@ -1,11 +1,32 @@
 #低耦合 
 
   
-Composition 組合，是「某物裡面有另一個物件」，更白話說就是「一個類別擁有另一個類別作為屬性」，跟繼承沒關係。
+Composition (組合)，是「某物裡面有另一個物件」，更白話說就是「一個類別擁有另一個類別作為屬性」，跟繼承沒關係。
 
 - ==has-a== →
 - Car has a Engine
 - Dog has a Tail
+
+---
+
+## 範例一：在 Installer class 中有 Logger 實作
+
+```csharp
+
+public class Installer
+{
+	private Logger _logger;
+	
+	public Installer(Logger logger)
+	{
+		_logger = logger;
+	}
+	
+}
+
+```
+
+---
 
 ```csharp
 
@@ -123,11 +144,28 @@ engine.Start();
 
 如果 Engine 改變內部實作，只要介面不變，Car 不需要改
 
----
 
+---
   
 ## 總結：
 
 - 繼承 → 高耦合 → 適合「is-a」且父類別穩定
 
 - 組合 → 低耦合 → 適合「has-a」且需要彈性或可替換性
+
+---
+
+## 比較 Composition 與 Interface
+
+| 概念                   | 定義                                                    |
+| -------------------- | ----------------------------------------------------- |
+| **Composition (組合)** | 將一個物件作為另一個物件的成員來使用，也就是 **has-a 關係**。強調「物件之間低耦合、重用性高」。 |
+| **Interface (介面)**   | 定義一組方法簽名，**不包含實作**。強調「規範一個物件應該做什麼」，讓不同類別可以互換。         |
+
+
+## OOP 層級
+- Composition → 是 物件之間的結構關係（誰包含誰）。
+- Interface → 是 類別的契約（誰必須實作哪些方法）。
+
+## 觀念速查
+- [composition與inheritance的差異](https://www.udemy.com/course/csharp-intermediate-classes-interfaces-and-oop/learn/lecture/2243560#overview)
