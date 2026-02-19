@@ -4,17 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "ee804612a5bd86d3",
+        "id": "ef83e935304f3ea0",
         "type": "tabs",
         "children": [
           {
-            "id": "640ea34013863987",
+            "id": "61dfd74a807cefa7",
             "type": "leaf",
             "state": {
-              "type": "graph",
+              "type": "empty",
               "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "icon": "lucide-file",
+              "title": "New tab"
             }
           }
         ]
@@ -70,12 +70,11 @@
               "title": "Bookmarks"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 325.5
   },
   "right": {
     "id": "ff6569ddcaa1499a",
@@ -91,6 +90,7 @@
             "state": {
               "type": "backlink",
               "state": {
+                "file": "C＃/物件導向/Composition.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -100,7 +100,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks"
+              "title": "Backlinks for Composition"
             }
           },
           {
@@ -109,11 +109,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
+                "file": "C＃/物件導向/Composition.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links"
+              "title": "Outgoing links from Composition"
             }
           },
           {
@@ -137,60 +138,83 @@
             "state": {
               "type": "outline",
               "state": {
-                "followCursor": false,
+                "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
               "title": "Outline"
             }
+          },
+          {
+            "id": "5414c01f5d6137df",
+            "type": "leaf",
+            "state": {
+              "type": "mermaid-toolbar-view",
+              "state": {},
+              "icon": "trident-custom",
+              "title": "Mermaid Toolbar"
+            }
           }
-        ]
+        ],
+        "currentTab": 4
       }
     ],
     "direction": "horizontal",
-    "width": 300,
+    "width": 225.5,
     "collapsed": true
   },
   "left-ribbon": {
     "hiddenItems": {
+      "mermaid-tools:Open Mermaid Toolbar": false,
       "switcher:Open quick switcher": false,
       "graph:Open graph view": false,
       "canvas:Create new canvas": false,
       "daily-notes:Open today's daily note": false,
       "templates:Insert template": false,
       "command-palette:Open command palette": false,
-      "bases:Create new base": false
+      "bases:Create new base": false,
+      "copilot:Open Copilot Chat": false
     }
   },
-  "active": "640ea34013863987",
+  "active": "61dfd74a807cefa7",
   "lastOpenFiles": [
-    "C＃/物件導向/Coupling.md",
-    "C＃/欄位.md",
-    "C＃/set 存取器.md",
-    "C＃/get 存取器.md",
-    "C＃/Map of Content/屬性MOC.md",
-    "C＃/屬性概念.md",
-    "C＃/自動實作屬性.md",
-    "C＃/方法.md",
-    "C＃/ref 與 out 參數的差異.md",
-    "C＃/ref 參數.md",
-    "C＃/out 參數.md",
-    "C＃/interface 與 abstract class 的差異.md",
-    "C＃/class 與 struct 的差異.md",
-    "C＃/抽象類別.md",
-    "C＃/抽象化.md",
-    "C＃/Map of Content/值型別MOC.md",
-    "C＃/Map of Content/修飾詞MOC.md",
-    "C＃/Map of Content/物件導向MOC.md",
-    "C＃/Map of Content/參考型別MOC.md",
-    "C＃/Map of Content",
-    "C＃/參考型別/array.md",
-    "C.md",
-    "C＃/參考型別/class 與物件操作.md",
-    "C＃/值型別/Struct.md",
-    "C＃/值型別/Primitive Type.md",
-    "存取修飾詞.md",
-    "C＃/C.md"
+    "Microsoft Entra ID.md",
+    "Identity-Architecture/01-Identity-Issuance/Identity-Issuance.md",
+    "Identity-Architecture/06-Concepts/Claims.md",
+    "Identity-Architecture/06-Concepts/Configuration.md",
+    "Untitled 1.md",
+    "Identity-Architecture/01-Identity-Issuance/SSO.md",
+    "Identity-Architecture/03-Identity-Restoration/Identity-Restoration.md",
+    "Identity-Architecture/02-Identity-Transport/Identity-Transport.md",
+    "Identity-Architecture/08-AI-Code-Reading/Code-Dependency-Map.md",
+    "Identity-Architecture/09-Comparison/Concept vs Project Reality.md",
+    "Identity-Architecture/08-AI-Code-Reading/Security-Flow-Trace.md",
+    "Identity-Architecture/08-AI-Code-Reading/AI-Session-Logs.md",
+    "Identity-Architecture/08-AI-Code-Reading/AI Code Reading Session (template).md",
+    "Identity-Architecture/08-AI-Code-Reading/問題模板.md",
+    "Identity-Architecture/07-Runtime-Flows/Request Flow.md",
+    "Identity-Architecture/07-Runtime-Flows/Login Flow.md",
+    "Identity-Architecture/06-Concepts/UseAuthorization().md",
+    "Identity-Architecture/06-Concepts/UseAuthentication().md",
+    "Identity-Architecture/06-Concepts/Policy.md",
+    "Identity-Architecture/06-Concepts/JWT.md",
+    "Identity-Architecture/06-Concepts/Cookie.md",
+    "Identity-Architecture/06-Concepts/Concept Template.md",
+    "Identity-Architecture/06-Concepts/ClaimsPrincipal.md",
+    "Identity-Architecture/06-Concepts/Authorize-Attribute.md",
+    "Identity-Architecture/06-Concepts/Authorization-Middleware.md",
+    "Identity-Architecture/05-Middleware/Middleware Pipeline.md",
+    "Identity-Architecture/09-Comparison",
+    "Identity-Architecture/08-AI-Code-Reading",
+    "Identity-Architecture/07-Runtime-Flows",
+    "Identity-Architecture/06-Concepts",
+    "Identity-Architecture/05-Middleware",
+    "Identity-Architecture/未命名檔案夾 4",
+    "Identity-Architecture/未命名檔案夾 3",
+    "Identity-Architecture/未命名檔案夾 2",
+    "Identity-Architecture/未命名檔案夾",
+    "Identity-Architecture/04-Authorization",
+    "Untitled.canvas"
   ]
 }
