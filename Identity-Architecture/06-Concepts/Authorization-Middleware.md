@@ -64,9 +64,19 @@ Authorization Middleware 依賴：
 
 # 🏗 六、專案實作對照
 
-- 是否有自訂 AuthorizationHandler？
-- 是否覆寫預設行為？
-- 是否存在例外 bypass 授權？
+## WebAPI：多一層「BearerTokenMiddleware」作為前置安全閘
+- `ERP.Security.Middlewares.BearerTokenMiddleware`
+    - 位置建議：`UseRouting()` 後、`UseAuthorization()` 前
+    - 作用：檢查 `Authorization: Bearer ...`、支援白名單、驗證失敗直接回 401
+    - 注意：它不是 `UseAuthorization()`，也不負責執行 policy；它是 Token 驗證前置防線
+
+## MVC：授權依賴 `UseJwtAuthentication()` 先建好 `HttpContext.User`
+- `ERP.CommonLib.Middleware.JwtAuthenticationMiddleware` 成功後會指派 `HttpContext.User`
+- 因此即使不呼叫 `UseAuthentication()`，`UseAuthorization()` 仍可對 `[Authorize]` 做判斷
+
+## 例外 bypass（已觀察到）
+- Bearer token 驗證：有白名單路徑（login/captcha/report export 等）
+- MVC JWT 還原：有排除路徑（登入/登出/靜態資源等）
 
 ---
 

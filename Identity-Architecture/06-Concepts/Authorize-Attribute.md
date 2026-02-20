@@ -56,9 +56,16 @@ Authorization（權限觸發層）
 
 # 🏗 五、專案實作對照
 
-## 是否大量使用 Role-based？
-## 是否混用 Policy？
-## 是否在 Controller 邏輯中再自行檢查權限？
+## 站台層級預設要求登入（示例）
+- `ERP.PMS.Sewing` 在 `Program.cs` 設定 `FallbackPolicy`：沒有 `[AllowAnonymous]` 的 action 會被視為需要授權
+
+## Token/Session 還原方式差異會影響 `[Authorize]`
+- WebAPI：依賴 `UseAuthentication()`（JwtBearer）先建立 `HttpContext.User`
+- MVC（Trade/DataAdmin）：依賴 `UseJwtAuthentication()` 先把 `HttpContext.User` 建好，再由 `UseAuthorization()` 讀 `[Authorize]`
+
+## 例外路徑（不驗證/不授權）
+- `ERP.CommonLib.Middleware.JwtAuthenticationMiddleware` 有排除路徑清單（例如 `/account/login`, `/captcha`, 靜態資源等）
+- `ERP.Security.Middlewares.BearerTokenMiddleware` 有 API 白名單（例如 `/v1/auth/login`, `/v1/captcha` 等）
 
 ---
 

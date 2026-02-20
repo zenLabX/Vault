@@ -61,12 +61,31 @@ Controller
 
 ## Middleware 順序：
 
-是否為：
+本專案有三種常見排列（依站台類型不同）：
 
-app.UseAuthentication();
-app.UseAuthorization();
+## A) WebAPI（PMS/DataAdmin 這類）
+典型順序（節錄實際 `Program.cs`）：
 
-## 是否有自訂 Middleware 插在中間？
+`UseRouting()`
+→ `UseCors("AllowAll")`
+→ `BearerTokenMiddleware`（自訂；JWT 驗證前置檢查）
+→ `UseAuthentication()`（JwtBearer 建 `HttpContext.User`）
+→ `UseAuthorization()`
+→ `MapControllers()`
+
+## B) WebAPI（ERP.WebAPI 主站台）
+目前程式碼把 `UseAuthentication()` 提前呼叫（在 `UseRouting()` 之前），但仍在 `UseAuthorization()` 之前；同時在較後段再插入 `BearerTokenMiddleware` 做額外的 Token 檢查。
+
+## C) MVC（Trade/DataAdmin 這類）
+典型順序：
+
+`UseRouting()`
+→ `UseSession()`
+→ `UseJwtAuthentication()`（自訂；從 `AuthToken` cookie 還原 `HttpContext.User`）
+→ `UseAuthorization()`
+→ `MapControllerRoute(...)`
+
+補充：`ERP.PMS.Sewing` 會再加上 `UseAuthentication()`（因同時使用 CookieAuthentication）。
 
 ---
 

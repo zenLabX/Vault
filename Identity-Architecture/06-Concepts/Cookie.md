@@ -71,12 +71,33 @@ Browser 自動帶上 Cookie
 # 🏗 六、專案實作對照
 
 ## 是否使用 Cookie Authentication？
-- AddCookie()？
-- Cookie 名稱？
+- 有（但不是所有 MVC 都用框架 CookieAuth）：
+	- `ERP.PMS.Sewing`：有 `AddCookie(...)`（MVC 頁面登入預設 scheme），並搭配 `app.UseAuthentication()`
+	- `ERP.Trade` / `ERP.DataAdmin`：主要不是 ASP.NET CookieAuthentication；而是「JWT 放在 Cookie」+ `app.UseJwtAuthentication()` 自行還原
+
+## JWT Cookie（本專案常見）
+- JWT Cookie 名稱：`AuthToken`
+- 讀取位置：`ERP.CommonLib.Middleware.JwtAuthenticationMiddleware`
+- 額外的身分/情境資訊也常以 Cookie 傳遞（例如：`Factories`、`CurrentFactory`、`CurrentDivisionID`、`UserID`、`UserEmail` 等），Controller 會直接讀取供畫面/查詢使用
+
+## Cookie 實際寫入點（本 repo 可追到）
+- **前端（JS）寫入（登入時）**
+	- `ERP.SharedUI/wwwroot/js/login/login.js`（登入成功後 `document.cookie = ...`）
+	- `ERP.PMS/wwwroot/js/login/login.js`
+	- `ERP.PMS.Sewing/wwwroot/js/login/login.js`
+	- `ERP.SSO/wwwroot/js/login.js`（登入成功後寫入 `AuthToken` cookie，接著導向 `/Account/FinalizeLogin`）
+	- 寫入包含：`AuthToken`、`Factories`、`CurrentFactory`、`CurrentDivisionID`、`CurrentFtyGroup`、`UserName`、`UserEmail`、`IsAdmin`...
+- **後端（Middleware）刷新 AuthToken（每次 request）**
+	- `ERP.CommonLib/Middleware/JwtAuthenticationMiddleware.cs`
+	- 驗證成功後會重新寫入 `AuthToken` cookie（`HttpOnly = true`, `Secure = true`, `SameSite = Lax`, `Expires = UtcNow + 12h`）
+
+## ASP.NET CookieAuthentication（SSO 站台有用）
+- `ERP.SSO/Controllers/TokenLoginController.cs` 會在 `FinalizeLogin` 中呼叫 `HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, ...)`
+- 這會產生「框架的 authentication ticket cookie」（cookie 名稱依設定而定），與 `AuthToken` JWT cookie 是兩種不同材料（可同時存在）
 
 ## 是否混用 JWT？
-- JWT 存在 Cookie 裡？
-- 還是存在 LocalStorage？
+- 主要是「JWT 存在 Cookie 裡」
+- 未看到把 JWT 放 `localStorage` 的既有實作（至少在這個 repo 的 server 端邏輯沒有依賴它）
 
 ---
 

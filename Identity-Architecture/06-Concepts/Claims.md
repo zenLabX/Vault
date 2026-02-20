@@ -77,9 +77,22 @@ Claims 依賴：
 
 # 🏗 六、專案實作對照
 
-- 是否有自訂 Claim？
-- 是否將資料庫資料放入 Claim？
-- 是否存在 Claim 爆量？
+## 自訂 Claim（已觀察到）
+`ERP.Security.Utilities.TokenGenerator` 產出的 JWT 會包含（節錄）：
+- `ClaimTypes.Name`、`ClaimTypes.Sid`
+- `ClaimTypes.Role`
+- `ClaimTypes.System`
+- `ClaimTypes.Email`
+- `Server`、`Timezone`、`UserName`
+- 若有 `UserProfile`：`UserID`、`UserNameFull`、`UserPosition`、`UserEmail`、`UserExt`、`ADAccount`、`IsAdmin`、`IsMIS`、`CurrentFactory`、`CurrentDivisionID`、`CurrentFtyGroup`
+
+## Claim vs Cookie（專案現況）
+- 這個專案同時使用 Claims 與 Cookies：
+      - API 側：以 JWT claims 為主（搭配 Authorization header）
+      - MVC 側：除了 `AuthToken` JWT 以外，很多「使用者/工廠/部門」資訊也直接以 cookie 傳遞並在 Controller 讀取
+
+## Claim 爆量風險
+- `UserProfile` 類型的資料若全部塞進 JWT，會增加 token size；目前做法偏「必要欄位塞 claim + 其他欄位可走 cookie」
 
 ---
 

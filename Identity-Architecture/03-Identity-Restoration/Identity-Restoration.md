@@ -225,9 +225,35 @@ builder.Services.AddScoped<IClaimsTransformation, GarmentClaimsTransformation>()
 
 ---
 
-## 問題區（實作時補：建議你先列答案）
-- 我們的主要模式是 Cookie 還是 JWT？哪一段 endpoint 用哪個 scheme？
-- JWT 的 issuer/audience/jwks 來源是誰（Entra/Google/自建）？
-- 多台 Web 伺服器是否要共享 DataProtection keys？（否則 cookie 會隨機失效）
-- 本地授權資料（角色、廠別、產線）要放在 token claims，還是進系統後查 DB 再補？
-- 需要列級權限（Row-level security）嗎？如何用 `HttpContext.User` 驅動查詢條件？
+## 問題區（專案實作對應）
+### 1) 主要模式是 Cookie 還是 JWT？
+**專案實作狀況：**
+- WebAPI：JWT Bearer 為主（`Authorization: Bearer <jwt>`）
+  - 常見會先經過 `ERP.Security.Middlewares.BearerTokenMiddleware`，再由 `UseAuthentication()`（JwtBearer）還原 principal
+- MVC：以「JWT 放在 Cookie」為主（Cookie 名稱 `AuthToken`）
+  - 使用 `app.UseJwtAuthentication()`（`ERP.CommonLib.Middleware.JwtAuthenticationMiddleware`）自行驗證並指派 `HttpContext.User`
+  - 並且大量使用額外 cookies 傳遞使用者/工廠情境（例如 `Factories`、`CurrentFactory`、`CurrentDivisionID`、`UserID` 等）
+- MVC 特例：`ERP.PMS.Sewing` 同時使用 ASP.NET CookieAuthentication + JwtBearer
+
+### 2) JWT 的 issuer/audience/jwks 來源？
+**專案實作狀況：**
+- 本地簽發為主：`ERP.Security.Utilities.TokenGenerator`
+- 設定來源：`appsettings.json` 的 `Jwt:Key` / `Jwt:Issuer` / `Jwt:Audience`
+- 驗證方式：以對稱金鑰（HMAC）驗證為主；未看到必須依賴 JWKS/Authority 的既有設定
+
+### 3) 多台 Web 伺服器共享 DataProtection keys？
+**專案實作狀況：**
+- 僅當站台使用 ASP.NET CookieAuthentication（例如 `ERP.PMS.Sewing`）時才會遇到「多機解密票證」問題
+- 目前 Identity 還原主力在 JWT（Bearer 或 `AuthToken` cookie），DataProtection keys 是否要共享仍取決於部署型態與是否啟用 CookieAuth
+
+### 4) 本地授權資料放在 token claims 還是查 DB？
+**專案實作狀況：**
+- 混合模式（以「Cookie + JWT claims」為主）：
+  - JWT claims：`ERP.Security.Utilities.TokenGenerator` 會帶入 Role/System/UserID/CurrentFactory 等欄位
+  - Cookie：MVC 站台常直接以 cookie 搭配（工廠/部門/使用者資料）供 UI 與查詢使用
+- DB 細粒度授權：本 repo 有 `IAuthorizationService` 的使用示例與 Casbin 相關服務（在 `ERP.CommonLib.Services.Authentication`），但是否所有模組皆已接入需再逐系統盤點
+
+### 5) Row-level security 實作？
+**專案實作狀況：**
+- 在 MVC 基礎 Controller/RequestContext 建置時，會從 cookie 解析 `CurrentFactory` 等情境資訊（例如 `Factories`、`CurrentFactory`）
+- API 是否有「自動 row filter」需要再對實際 repository/query 層做盤點；目前已能確定「工廠情境」在 UI/MVC 端是以 cookie 方式傳遞並被廣泛使用

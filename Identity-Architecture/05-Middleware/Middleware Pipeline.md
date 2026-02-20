@@ -108,8 +108,27 @@ app.Run();
 
 ---
 
-## 問題區（實作時補：建議你先填）
-- 我們是 MVC 為主、還是同站台也有 API？（會影響 CORS、JWT/Cookie 混用）
-- 有沒有反向代理/負載平衡？（影響 HTTPS、ForwardedHeaders、Cookie Secure）
-- 是否多台機器？（影響 DataProtection keys 與 Cookie 可解密性）
-- 需要全域例外處理/稽核 log middleware 嗎？要放在哪一段？
+## 專案實作對照（本 repo 已觀察到）
+### WebAPI（PMS/DataAdmin）常見順序
+`UseHttpsRedirection()`
+→ `UseRouting()`
+→ `UseCors("AllowAll")`
+→ `BearerTokenMiddleware`（ERP.Security；Token 前置驗證 + 白名單）
+→ `UseAuthentication()`（JwtBearer）
+→ `UseAuthorization()`
+→ `MapControllers()`
+
+### MVC（Trade/DataAdmin）常見順序
+`UseHttpsRedirection()`
+→ `UseRouting()`
+→ `UseSession()`
+→ `UseJwtAuthentication()`（ERP.CommonLib；從 `AuthToken` cookie 還原 `HttpContext.User`）
+→ `UseAuthorization()`
+→ `MapControllerRoute(...)`
+
+### WebAPI（ERP.WebAPI 主站台）注意點
+- `UseAuthentication()` 目前被放在較前段（早於 `UseRouting()`）
+- 後段仍會插入 `BearerTokenMiddleware`（標註為需放在 `UseAuthorization` 前）
+
+### 安全提醒（實際現況）
+- `ERP.WebAPI.TRADE` 的 auth middleware 目前被註解掉：需要確認是否為暫時狀態或另有外層保護（反向代理/網段隔離等）

@@ -62,8 +62,14 @@ Authorization（權限決策層）
 # 🏗 五、專案實作對照
 
 ## Policy 註冊位置
-- Program.cs
-- Startup.cs
+- 以 `Program.cs` 為主（.NET 6+ minimal hosting）
+
+## 已觀察到的授權策略設定
+- `ERP.PMS.Sewing`：有設定 `FallbackPolicy = RequireAuthenticatedUser()`（未標 `[AllowAnonymous]` 一律要求登入）
+
+## 是否有自訂 Requirement / Handler？
+- Identity-Architecture 文件內已有 resource-based 的示例；
+- 在本次掃描中未針對整個 repo 全面盤點 handler 類別，但可先以「Controller 標記 + FallbackPolicy」作為目前主要策略假設。
 
 ## 是否有自訂 Requirement？
 - Yes / No

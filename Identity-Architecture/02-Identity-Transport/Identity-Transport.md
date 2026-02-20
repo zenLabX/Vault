@@ -164,8 +164,22 @@ public class OrdersController : Controller
 
 ---
 
-## 問題區（實作時補：你可以逐項打勾）
-- 我們是 Cookie、Bearer，還是混用？混用邊界在哪（Web vs API）？
-- Cookie SameSite 要設多少才能兼顧 SSO 導轉？
-- access_token 要不要落地保存？保存在哪裡？保存多久？
-- 產線共用機台：是否需要「刷卡/工號快速切換」與強制登出？
+## 專案實作對照（本 repo 已觀察到）
+- **混用（Web vs API 邊界存在）**
+  - WebAPI：主要走 `Authorization: Bearer <jwt>`（搭配 `ERP.Security.Middlewares.BearerTokenMiddleware` + `UseAuthentication()`）
+  - MVC：主要走 Cookie `AuthToken`（JWT）+ `app.UseJwtAuthentication()`（`ERP.CommonLib.Middleware.JwtAuthenticationMiddleware`）
+- **CORS Preflight 與 Bearer**
+  - `BearerTokenMiddleware` 會直接放行 `OPTIONS`，避免 preflight 因未帶 Authorization 被擋
+- **token 是否落地保存**
+  - MVC：token 會落在 Cookie（`AuthToken`）
+    - 前端登入 JS 會用 `document.cookie = ...` 寫入（例如 `ERP.SharedUI/wwwroot/js/login/login.js`）
+    - 後端 `JwtAuthenticationMiddleware` 驗證通過後會刷新 `AuthToken`（HttpOnly/Secure/Expires）
+  - WebAPI client：server 端僅看到以 header bearer 帶入；client 端保存位置不在此 repo 的 server code 範圍
+- **Cookie SameSite / SSO redirect**
+  - 目前未在已讀到的 `Program.cs` 中看到明確的 `SameSite` 設定；若要支援跨站 SSO redirect，通常需要檢查是否設成 `SameSite=None; Secure`（此項建議納入部署/驗證清單）
+
+- **SSO:TokenEndpoint 設定存在路徑不一致（需留意）**
+  - `ERP.Trade/appsettings.json`：`/v1/token/issue`（與 `ERP.WebAPI/Controllers/TokenController.cs` 相符）
+  - `ERP.DataAdmin/appsettings.json`：`/v1/auth/token/issue`（本次掃描未在 `ERP.WebAPI/Controllers` 找到對應 action；可能是舊路徑或需 proxy rewrite）
+- **共用機台/快速切換**
+  - 現況：MVC 端大量依賴 cookie 承載使用者與工廠情境；若有共用機台需求，通常會需要縮短有效期或強制登出/切換流程（此 repo 尚未直接呈現完整策略）

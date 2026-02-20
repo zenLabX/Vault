@@ -58,12 +58,16 @@ HttpContext.User
 
 # 🏗 六、專案實作對照
 
-是否使用：
+## `HttpContext.User` 來源（專案現況）
+- WebAPI：`UseAuthentication()`（JwtBearer）建立 `ClaimsPrincipal`
+- MVC：`UseJwtAuthentication()`（自訂）直接把 principal 指派到 `HttpContext.User`
 
-User.FindFirst(...)
-User.IsInRole(...)
+## 常見用法（在本 repo 可看到的模式）
+- 角色：從 `ClaimTypes.Role` 或 `role` 讀取（例如在 SecurityContext 建 RequestContext 時會掃 role claims）
+- 使用者帳號：`HttpContext.User.Identity.Name`（例如 `ERP.CommonLib.Services.ApiCalling.Implementations.JwtAuthenticationProvider` 會用它取得呼叫外部 API 的 token）
 
-是否存在自訂 Claims？
+## 自訂 Claims
+- 來源主要來自 `ERP.Security.Utilities.TokenGenerator`（見「Claims」筆記的清單）
 
 ---
 

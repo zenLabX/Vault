@@ -33,10 +33,19 @@
 ---
 
 # 🏗 五、專案實作對照
-- appsettings.json / appsettings.{Environment}.json
-- Secret Manager / KeyVault
-- 配置 IdP / SigningKey / CookieOptions
-- Feature Flags 設定
+
+## 設定檔分佈
+- 多數站台都有 `appsettings.json` 與 `appsettings.Development.json`
+
+## JWT 相關（已在程式碼中直接使用的 key）
+- `Jwt:Key` / `Jwt:Issuer` / `Jwt:Audience`
+	- `ERP.Security.Utilities.TokenGenerator` 產生 JWT
+	- `ERP.CommonLib.Middleware.JwtAuthenticationMiddleware` 驗證 JWT
+	- `ERP.PMS.Sewing` / `ERP.WebAPI.*` 的 JwtBearer 驗證也依賴這些設定
+
+## 其他常見組態（與身分/授權流程有關）
+- CORS policy：多個 WebAPI 設定 `AllowAll`
+- Cookie：MVC 會讀取多個 cookie（例如 `AuthToken`、`Factories`、`CurrentFactory`、`UserID` 等）作為使用者/工廠情境資訊
 
 ---
 

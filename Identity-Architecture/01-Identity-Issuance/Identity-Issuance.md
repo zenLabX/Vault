@@ -89,34 +89,30 @@ Identity Issuance 是「完成身分驗證後，簽發可被其他系統信任�
 
 ---
 
-## 問題區（實作時補：我先幫你列成檢核清單）
-### 1) 登入策略
-- 是否只允許公司網域（例如 `@garment.com`）？
-- 是否允許外部供應商/代工廠用 Google / Entra B2B？
-- 是否強制 MFA？哪些角色必須（財務、採購、工單審核）？
+## 專案實作對照（本 repo 已觀察到）
+### 1) Issuance（簽發者）
+- 這個 repo 存在「多個簽發點」：
+  - `ERP.Security.Utilities.TokenGenerator`：共用的 JWT 產生器（HMAC；預設 12h）
+  - `ERP.WebAPI/Controllers/SSOController.cs`：在 Controller 內直接用 `JwtSecurityToken` 簽發（12h 或 RememberMe 30d）
+  - `ERP.WebAPI/Services/LoginService.cs`：也有一套 `GenerateJwtToken(...)`（expires 1h）
 
-### 2) 帳號對應（外部身分 → 系統帳號）
-- 用 `sub` 還是 `email` 當作本地唯一鍵？（建議：`sub` + 另外保存 email，email 可能變）
-- 第一次登入是否自動開帳？還是要 IT/主管審核？
-- 離職/停用：IdP 停用後，本系統 session 要不要即刻失效？
+（因此文件描述應以「哪個站台/端點」為主，不宜假設全系統共用單一 issuance pipeline。）
 
-### 3) 權限模型與 Claims
-- 角色/群組是從 IdP 帶過來，還是系統內維護？
-- 若 IdP 帶 groups：群組量太大怎麼處理（group overage）？
-- 工廠常見：按「廠別/產線/站點」切權限，資料怎麼表達？（claim vs 本地表）
+### 2) Issuance 入口（已追到實作）
+- `POST /v1/auth/login`：`ERP.WebAPI/Controllers/AuthController.cs`
+- `POST /v1/sso/login`：`ERP.WebAPI/Controllers/SSOController.cs`
+- `GET /v1/token/issue`：`ERP.WebAPI/Controllers/TokenController.cs`
 
-### 4) Token 驗證與安全
-- 驗證哪些項目：issuer、audience、簽章、clock skew、nonce/state
-- Token 存放：是否存 access_token？（通常不要存太久，避免外洩風險）
-- Redirect URI、CORS、SameSite cookie 設定
+補充：`BearerTokenMiddleware` 白名單列了 `/v1/auth/token/issue`，且部分 MVC `appsettings.json` 也設定 `SSO:TokenEndpoint = /v1/auth/token/issue`；但在本次掃描 `ERP.WebAPI/Controllers` 未找到該路徑的對應 action。另一份設定（如 `ERP.Trade/appsettings.json`）則指向 `/v1/token/issue`，與 `TokenController` 相符。
 
-### 5) 登出與風險
-- 需要 Single Logout（SLO）嗎？（多數 OIDC 不保證完整 SLO）
-- 產線共用機台：要不要短 session、閒置自動登出、禁止記住我？
+### 3) Claims 內容（Token 裡承載什麼）
+- JWT 會包含 `Role`、`System`、`Email`，以及 `UserProfile` 的延伸欄位（如 `UserID`、`IsAdmin`、`CurrentFactory` 等）
 
-### 6) 稽核與可追蹤
-- 需要登入稽核：誰、何時、哪台機器、哪個 IP、是否 MFA 成功
-- 需要把 IdP 的 sign-in logs 對接 SIEM 或內部稽核報表嗎？
+### 4) Refresh / 即時失效
+- 目前未看到 refresh token 機制；若要做到「權限立刻失效」，通常需要縮短 JWT 或做 server-side 黑名單/版本號策略（此 repo 尚未呈現完整機制）
+
+### 5) 外部 IdP / OIDC
+- Repo 內有 `ERP.SSO`/`ERP.SSONT` 站台，但在本次已讀到的主要 `Program.cs` 中，尚未看到明確的 `AddOpenIdConnect()` 實作片段（可能存在於尚未掃到的檔案或以其他封裝方式提供）。
 
 ---
 

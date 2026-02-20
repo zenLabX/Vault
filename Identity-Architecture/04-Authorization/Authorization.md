@@ -209,9 +209,32 @@ public class OrdersController : Controller
 
 ---
 
-## 問題區（實作時補：建議你先把答案填上）
-- 權限來源：靠 IdP groups/roles？還是系統內 DB 權限表？（或混合）
-- 權限粒度：到「頁面」就好，還是要到「按鈕/動作」？
-- 是否需要資料列級權限（按廠別/產線/客戶/品牌）？要用 Resource-based 嗎？
-- 不通過授權要回 403 還是回 404（隱藏資源存在）？
-- 權限異動是否要即時生效？（涉及 session 更新/重新簽 cookie/token）
+## 問題區（專案實作對應）
+### 1) 權限來源？
+**專案實作狀況：**
+- JWT claims：`ERP.Security.Utilities.TokenGenerator` 會產生包含 `Role`、`System`、`UserID`、`CurrentFactory` 等資訊的 token
+- MVC cookies：許多 UI/查詢用的「工廠/部門/使用者資訊」直接存在 cookie（例如 `CurrentFactory`, `CurrentDivisionID`, `UserID`），Controller 會讀取使用
+- Casbin：`ERP.CommonLib.Services.Authentication.AuthenticationService` 有整合 Casbin 的介面/實作（表示專案具備政策式授權能力），但實際是否已全面接入需逐模組確認
+
+### 2) 權限粒度到哪一級？
+**專案實作狀況：**
+- 站台層級：`ERP.PMS.Sewing` 有 `FallbackPolicy`（未標 `[AllowAnonymous]` 一律要求登入）
+- 角色/Claim：JWT 內有 `ClaimTypes.Role` 等資訊，可用於 Role/Claims-based 授權
+- 工廠/部門情境：MVC 端大量使用 cookie（`CurrentFactory`/`CurrentDivisionID`）驅動畫面與查詢條件
+
+### 3) 資料列級權限實作方式？
+**專案實作狀況：**
+- MVC 端已能看到「工廠情境」透過 cookie 建立（例如 BaseController/RequestContext 會讀 `CurrentFactory`）
+- 是否存在「通用 row-level filter」需要再深入各 domain 的 repository/query 實作才能下定論
+
+### 4) 不通過授權回應策略？
+**專案實作狀況：**
+- 一般情況：回403 Forbidden（已登入但權限不足）
+- 未登入：回401 Unauthorized，導向登入頁
+- 敏感資源：視安全需求可回404（隱藏資源存在）
+- 實作：在Controller/Middleware中自訂錯誤處理（見ERP.CommonLib.Middleware.ExceptionMiddleware）
+
+### 5) 權限異動即時生效機制？
+**專案實作狀況：**
+- WebAPI：目前以 JWT（12h）為主，未看到 refresh token 機制；若要「立即失效」通常需要縮短 JWT 或做 server-side 黑名單/版本號
+- MVC：若大量依賴 cookie（包含 `AuthToken` 與各種使用者資訊 cookie），權限/情境異動通常透過更新 cookie 或重新登入生效

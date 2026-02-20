@@ -58,9 +58,31 @@ UseAuthorization()
 
 # 🏗 五、專案實作對照
 
-- 使用 JwtBearer？
-- 使用 Cookie Authentication？
-- 金鑰來源？
+本專案同時存在「框架內建 Authentication Handler」與「自訂 JWT 還原 Middleware」兩條路徑：
+
+## A) WebAPI：JwtBearer + app.UseAuthentication()
+- 代表：`ERP.WebAPI.PMS`、`ERP.WebAPI.DataAdmin`
+- Request 會帶 `Authorization: Bearer <jwt>`
+- Pipeline 會在 `UseAuthorization()` 前呼叫 `app.UseAuthentication()`，由 `JwtBearer` handler 驗證 JWT 並建立 `HttpContext.User`
+- 另外會插入 `ERP.Security.Middlewares.BearerTokenMiddleware`（放在 `UseAuthentication()` 前）先做「Header / 逾期 / 基本 claim」的快速驗證與白名單放行
+
+## B) MVC：app.UseJwtAuthentication()（ERP.CommonLib）
+- 代表：`ERP.Trade`、`ERP.DataAdmin`
+- 不一定會呼叫 `app.UseAuthentication()`；而是使用 `app.UseJwtAuthentication()`（`ERP.CommonLib.Middleware.JwtAuthenticationMiddleware`）
+- 身分載體：Cookie `AuthToken`（必要時也支援 query string `token`）
+- 驗證設定：讀取 `Jwt:Key` / `Jwt:Issuer` / `Jwt:Audience`，`ClockSkew = 0`
+- 成功後直接指派 `HttpContext.User = principal`，讓 `UseAuthorization()`/Controller 可使用
+
+## C) MVC 混合：CookieAuthentication + JwtBearer
+- 代表：`ERP.PMS.Sewing`
+- 服務註冊同時 `AddCookie(...)` + `AddJwtBearer(...)`
+- Pipeline：`app.UseJwtAuthentication(); app.UseAuthentication(); app.UseAuthorization();`
+- 授權預設：設定 `FallbackPolicy`，未標 `[AllowAnonymous]` 的頁面/端點一律要求已登入
+
+## 金鑰/參數來源（可追碼）
+- `ERP.Security.Utilities.TokenGenerator`：從 `appsettings.json` 讀 `Jwt:Key` / `Jwt:Issuer` / `Jwt:Audience` 產生 JWT（預設效期 12 小時）
+- `ERP.CommonLib.Middleware.JwtAuthenticationMiddleware`：從 `Jwt:*` 讀驗證參數並還原 `ClaimsPrincipal`
+- `ERP.WebAPI.*`：在各自 `Program.cs` 配置 `JwtBearer` 驗證參數（ValidateIssuer/Audience/Lifetime/SigningKey）
 
 ---
 

@@ -72,18 +72,25 @@ UseAuthentication()：
 # 🏗 五、專案實作對照
 
 ## Token 來源：
-（公司專案填）
+- WebAPI：Client 在每次呼叫 API 時帶 `Authorization: Bearer <jwt>`
+	- 例如 `ERP.WebAPI.PMS`、`ERP.WebAPI.DataAdmin`
+	- `ERP.Security.Middlewares.BearerTokenMiddleware` 會先檢查 Header/白名單，再交由 `JwtBearer` handler（`UseAuthentication()`）還原 principal
+- MVC：JWT 主要放在 Cookie `AuthToken`
+	- `ERP.CommonLib.Middleware.JwtAuthenticationMiddleware` 會從 `AuthToken` 取出 JWT（也支援 query string `token`）並建立 `HttpContext.User`
+
+## 產生（Issuance）
+- `ERP.Security.Utilities.TokenGenerator` 會從 `Jwt:Key`/`Jwt:Issuer`/`Jwt:Audience` 產生 JWT
+- 預設效期：12 小時（`Expires = UtcNow + 12h`）
 
 ## 驗證設定：
-- Authority:
-- Audience:
-- ValidateIssuer:
-- ValidateLifetime:
+- Authority：未看到使用外部 Authority/JWKS 的必要設定；目前以對稱金鑰（HMAC）驗證為主
+- Audience / Issuer / SigningKey：由 `Jwt:*` 組態提供
+- ValidateIssuer / ValidateAudience / ValidateLifetime / ValidateIssuerSigningKey：在 MVC（`UseJwtAuthentication`）與部分站台（如 `ERP.PMS.Sewing`）皆有啟用
 
 ## 是否使用：
-- Access token？
-- id_token？
-- Refresh token？
+- Access token：本專案的 JWT 同時扮演「身份 + API 憑證」的角色（Bearer token）
+- id_token：未看到 OIDC id_token 的使用痕跡（以專案內簽 JWT 為主）
+- Refresh token：未看到 refresh token 的實作；目前以較長效 JWT（12h）為主
 
 ---
 
