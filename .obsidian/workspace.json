@@ -4,17 +4,21 @@
     "type": "split",
     "children": [
       {
-        "id": "ef83e935304f3ea0",
+        "id": "69d79897215a1780",
         "type": "tabs",
         "children": [
           {
-            "id": "61dfd74a807cefa7",
+            "id": "bd8484520e3aa5a4",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "Backend/Redis/01-快取提升效能.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "New tab"
+              "title": "01-快取提升效能"
             }
           }
         ]
@@ -138,16 +142,17 @@
             "state": {
               "type": "outline",
               "state": {
+                "file": "Backend/Redis/01-快取提升效能.md",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline"
+              "title": "Outline of 01-快取提升效能"
             }
           },
           {
-            "id": "5414c01f5d6137df",
+            "id": "7b1df63f15451cc7",
             "type": "leaf",
             "state": {
               "type": "mermaid-toolbar-view",
@@ -161,8 +166,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 225.5,
-    "collapsed": true
+    "width": 225.5
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -177,13 +181,28 @@
       "copilot:Open Copilot Chat": false
     }
   },
-  "active": "61dfd74a807cefa7",
+  "active": "bd8484520e3aa5a4",
   "lastOpenFiles": [
-    "Microsoft Entra ID.md",
+    "Backend/AI-Template/📘 課程筆記整理器.md",
+    "Backend/AI-Template/🧪 觀念測驗產生器.md",
+    "Backend/Redis/02-快取成本與限制.md",
+    "Backend/Redis/01-快取提升效能.md",
+    "Backend/Redis/06-Redis 多功能學習.md",
+    "Backend/Redis/05-快取過期 TTL.md",
+    "Backend/Redis/08-Redis資料結構.md",
+    "Backend/Redis/07-Redis入門實戰.md",
+    "Backend/Redis/04-快取的核心目的.md",
+    "Backend/Redis/03-資料遺失風險與效能瓶頸診斷.md",
+    "Untitled.md",
+    "Identity-Architecture/06-Concepts/Microsoft Entra ID.md",
+    "Backend/AI-Template",
+    "Backend/Redis",
+    "Backend",
+    "Backend/Redis",
+    "未命名檔案夾",
     "Identity-Architecture/01-Identity-Issuance/Identity-Issuance.md",
     "Identity-Architecture/06-Concepts/Claims.md",
     "Identity-Architecture/06-Concepts/Configuration.md",
-    "Untitled 1.md",
     "Identity-Architecture/01-Identity-Issuance/SSO.md",
     "Identity-Architecture/03-Identity-Restoration/Identity-Restoration.md",
     "Identity-Architecture/02-Identity-Transport/Identity-Transport.md",
@@ -195,26 +214,11 @@
     "Identity-Architecture/08-AI-Code-Reading/問題模板.md",
     "Identity-Architecture/07-Runtime-Flows/Request Flow.md",
     "Identity-Architecture/07-Runtime-Flows/Login Flow.md",
-    "Identity-Architecture/06-Concepts/UseAuthorization().md",
-    "Identity-Architecture/06-Concepts/UseAuthentication().md",
-    "Identity-Architecture/06-Concepts/Policy.md",
-    "Identity-Architecture/06-Concepts/JWT.md",
-    "Identity-Architecture/06-Concepts/Cookie.md",
-    "Identity-Architecture/06-Concepts/Concept Template.md",
-    "Identity-Architecture/06-Concepts/ClaimsPrincipal.md",
-    "Identity-Architecture/06-Concepts/Authorize-Attribute.md",
-    "Identity-Architecture/06-Concepts/Authorization-Middleware.md",
-    "Identity-Architecture/05-Middleware/Middleware Pipeline.md",
     "Identity-Architecture/09-Comparison",
     "Identity-Architecture/08-AI-Code-Reading",
     "Identity-Architecture/07-Runtime-Flows",
     "Identity-Architecture/06-Concepts",
     "Identity-Architecture/05-Middleware",
-    "Identity-Architecture/未命名檔案夾 4",
-    "Identity-Architecture/未命名檔案夾 3",
-    "Identity-Architecture/未命名檔案夾 2",
-    "Identity-Architecture/未命名檔案夾",
-    "Identity-Architecture/04-Authorization",
     "Untitled.canvas"
   ]
 }
