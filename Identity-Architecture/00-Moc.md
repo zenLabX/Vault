@@ -13,6 +13,7 @@
 ## 二、時間流程（Runtime Flow）
 - [[Login Flow]]
 - [[Request Flow]]
+- [[System Interaction Map]]
 - [[Token Lifecycle]]
 
 ---
@@ -20,6 +21,7 @@
 ## 三、核心物件
 - [[JWT]]
 - [[Cookie]]
+- [[I18N]]
 - [[Claims]]
 - [[ClaimsPrincipal]]
 - [[Policy]]
