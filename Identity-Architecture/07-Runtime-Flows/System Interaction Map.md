@@ -166,3 +166,10 @@ CommonLib-->>MVC: 需要重新登入
 MVC->>Browser: 重新導向 SSO
 
 ```
+
+### 備註：
+
+> Cookie 是傳輸機制  
+> JWT 是身份憑證  
+> Security 是信任根  
+> CommonLib 是驗證入口
