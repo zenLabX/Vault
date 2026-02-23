@@ -25,3 +25,8 @@ tags: [meeting, auth]
   status:: backlog
   priority:: medium
   due:: 2026-02-23
+
+- [ ] 建立 Seed Data 的 Action 工作項目（Legacy pass0/pass1/pass2 → New Normalized Auth）：[[Auth/03-Implementation/01-Seed-Data-Work-Item]] #auth
+  status:: backlog
+  priority:: medium
+  due:: 2026-02-23

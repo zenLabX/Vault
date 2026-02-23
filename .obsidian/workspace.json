@@ -4,21 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "dc74b6c25261cddc",
+        "id": "0ca06083ddcbdf66",
         "type": "tabs",
         "children": [
           {
-            "id": "804ade10ee957627",
+            "id": "b9e81afb80629307",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "Work/Auth/02-Architecture/ER-Diagram.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "ER-Diagram"
+              "title": "New tab"
             }
           }
         ]
@@ -181,15 +177,17 @@
       "mermaid-tools:Open Mermaid Toolbar": false
     }
   },
-  "active": "804ade10ee957627",
+  "active": "b9e81afb80629307",
   "lastOpenFiles": [
-    "Work/Auth/06-Daily/2026-02-23.md",
-    "Work/Auth/06-Daily/Daily-Template copy.md",
+    "Work/Auth/03-Implementation/01-Seed-Data-Work-Item.md",
+    "Work/Auth/04-Meetings/2026-02-23-Seed-Data-Discussion.md",
+    "Work/Auth/00-Dashboard/Dashboard.md",
+    "Work/Auth/02-Architecture/Architecture.md",
     "Work/Auth/02-Architecture/AuthERDiagram.md",
     "Work/Auth/02-Architecture/ER-Diagram.md",
+    "Work/Auth/06-Daily/2026-02-23.md",
+    "Work/Auth/06-Daily/Daily-Template copy.md",
     "Work/Auth/02-Architecture/AuthER-Diagram.md",
-    "Work/Auth/02-Architecture/Architecture.md",
-    "Work/Auth/00-Dashboard/Dashboard.md",
     "Work/Auth/02-Architecture/Auth.mmd",
     "新增資料夾",
     "Work/Auth/03-Implementation/Implementation.md",
@@ -198,7 +196,6 @@
     "Work/Auth/01-Knowledge/00-Domain-Research.md",
     "Work/Auth/07-Weekly/Weekly-Template.md",
     "Work/Auth/06-Daily/Daily-Template.md",
-    "Work/Auth/04-Meetings/2026-02-23-Seed-Data-Discussion.md",
     "Work/Auth/01-Knowledge/System-Knowledge-Template.md",
     "Work/Auth/01-Knowledge/DB-Knowledge-Template.md",
     "Work/Auth/01-Knowledge/API-Knowledge-Template.md",
@@ -210,7 +207,6 @@
     "Auth/05-Decisions/ADR-Template.md",
     "Auth/00-Dashboard/Dashboard.md",
     "Auth/01-Knowledge/00-Domain-Research.md",
-    "Auth/01-Knowledge/01-Schema-Study.md",
     "Auth/99-Seed",
     "Auth/07-Weekly",
     "Auth/06-Daily",
