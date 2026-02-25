@@ -1,0 +1,234 @@
+# 權限系統架構總覽.docx
+
+## Paragraphs
+權限模組總覽
+📌 權限系統架構總覽
+1. 核心關聯邏輯 (ER Diagram 文字版)
+這套系統的運作核心是 「主體 (Subject) ⮕ 角色 (Role) ⮕ 資源 (Resource)」 的多對多映射。
+核心路徑 (The Happy Path):
+User (人) ⮕ 透過 UserGroup ⮕ 歸屬於 Group (群)
+User / Group ⮕ 透過 RelationPrincipalRole ⮕ 取得 Role (角色)
+Role ⮕ 透過 RelationGrant ⮕ 定義 Resource (物) + Action (動) 的權限
+最終判定：Effect (Allow/Deny) + ConditionJson (ABAC 條件)
+例外與執行路徑:
+UserOverride：跳過角色，直接針對「個人」進行資源限縮或加權（優先級最高）。
+Tokens：所有權限判定後的「執行快照」，用於驗證 Session 合法性。
+2. 資料表快速索引 (Table Directory)
+3. AI 推理提示 (For NotebookLM / AI Assistant)
+當你需要分析權限問題時，請遵循此邏輯：
+先從 AuthTokens 確認連線者身分。
+優先檢查 AuthUserOverride 是否有明確的 Deny/Allow。
+若無覆寫，則溯源 AuthUserGroup 與 AuthRelationPrincipalRole 找出使用者身上帶的所有角色。
+最後到 AuthRelationGrant 比對這些角色在該 Resource 下的 Effect。
+若有 ConditionJson，則將當前環境變數（如廠區 ID）帶入 JSON 邏輯計算。
+此外，還可參考：權限決策引擎執行流程
+權限流轉順序
+權限流轉順序
+權限模組的核心表所展現「權限是如何流轉的」順序：
+[主體] ⮕ [客體] ⮕ [關聯/角色] ⮕ [進階覆寫與執行]。
+身分主體
+AuthPrincipalUser (人)
+AuthPrincipalGroup (群)
+客體資源
+AuthResource (物)
+AuthAction (動)
+中介核心
+AuthRole  (角色) — 它是連接人與物的樞紐
+授權連結
+AuthRelationPrincipalRole (人/群與角色關聯)
+AuthRelationGrant (角色與資源動作關聯)
+AuthUserGroup (人與群組關聯)
+進階管控
+AuthUserOverride (個人覆寫)
+AuthTokens (連線執行)
+前 9 張表已經構成了一個完整的 RBAC + ABAC 混合權限引擎。
+加上 AuthTokens，權限系統具備了完整的「動態防禦能力」。 不僅能控制「誰能做什麼 (RBAC/ABAC)」，還能控制「當下的連線是否合法 (Session Mgmt)」。
+第 10 張表構成了一個 Enterprise Identity & Access Management (IAM) 資料庫架構。
+權限決策引擎執行流程
+權限決策引擎執行流程 (Logic Flow)
+第一層：物理過濾 (Filtering)
+在進行任何邏輯判斷前，系統先排除無效資料：
+Validity Check：檢查 IsActive = 1 且 Now 落在 [ValidFrom, ValidTo] 區間內。
+適用範圍：同時套用於 AuthUserGroup、AuthRelationPrincipalRole、AuthRelationGrant 與 AuthUserOverride。
+結果：若此層不通過，直接排除該筆紀錄。
+第二層：個人覆寫 (User Override) - 絕對優先
+這是你的 3.8 AuthUserOverride 表發揮作用的地方：
+Explicit Deny：若有一筆個人覆寫紀錄為 Effect = 0 (Deny)，立即判定為 DENY 並結束程序（Short-circuit）。
+Explicit Allow：若有一筆個人覆寫紀錄為 Effect = 1 (Allow)，則標記為 Potential Allow。
+第三層：角色聚合 (Role Aggregation) - 權限來源
+系統平行抓取使用者所有的權限來源：
+來源 A：直接指派給使用者的角色 (AuthRelationPrincipalRole where PrincipalType = 'USER')。
+來源 B：透過群組繼承的角色 (AuthUserGroup ⮕ AuthRelationPrincipalRole where PrincipalType = 'GROUP')。
+第四層：權限決策矩陣 (Grant Matrix) - 決策核心
+進入 3.7 AuthRelationGrant 表進行最終判定：
+Deny First：如果所有關聯角色中，有任何一個角色針對該資源是 Effect = 0 (Deny)，立即判定為 DENY。
+Allow Check：如果沒有 Deny，且其中一個角色（或個人覆寫）為 Effect = 1 (Allow)，則進入下一步。
+第五層：資料過濾 (ABAC/Condition) - 細粒度控制
+當動作被允許後，最後才套用 ConditionJson：
+解析 JSON 內容（如：Factory IN ('MA1')）。
+若當前操作的資料不符合 JSON 條件，則該次操作仍視為 DENY。
+🛠️ 最終決策規則總結 (Summary)
+你的決策引擎符合 "Deny-Overrides Strategy"（拒絕優先策略），可以用一句話概括：
+「任何地方出現 Deny 即拒絕；沒有 Deny 且任何地方出現 Allow 則允許；其餘預設拒絕。」
+💡 給開發者的核心實作建議
+在撰寫這個「決策引擎」的程式碼（C# 或 Java）時，請務必遵循以下效能原則：
+快速短路 (Fast-Fail)： 在 SQL 查詢時，優先查詢是否存在 Effect = 0 的紀錄。如果有，後面的 SQL 或邏輯運算（如解析大型 JSON）全部可以省下來。
+快取 Key 設計： 建議 Redis 的 Key 結構為 Perm:{UserId}:{ResourceKey}:{ActionCode}。當管理員修改了 AuthRelationGrant 時，要記得精準清除受影響的 User 快取。
+AppCode 隔離： 在第一步過濾時，別忘了檢查 AppCode，確保 PMS 的權限不會誤用到 ERP 的其他子系統。
+權限決策引擎情境
+權限決策引擎情境
+情境 1：離職員工的「帳號凍結」
+狀況：小明今天離職，管理員在 AuthPrincipalUser 把他設為 IsActive = 0。
+為何先跑「物理過濾」？
+如果不先檢查 IsActive 或 ValidTo，系統還要去算他那 20 個群組、50 個角色的複雜權限，最後才發現他不能登入。
+原因：效能。 在門口就擋掉無效的人，節省後續昂貴的運算資源。
+情境 2：總經理的「特權放行」
+狀況：總經理原本的角色（高階主管）不能進行「採購單審核」，但今天財務長不在，需要臨時給他權限。管理員在 AuthUserOverride 幫總經理加了一筆 Resource: PurchaseOrder, Action: Approve, Effect: 1 (Allow)。
+為何先跑「個人覆寫」？
+系統查到這筆「特權」後，就直接判定為 ALLOW 並結束。它不需要去查總經理那疊厚厚的角色清單（Role Grants）。
+原因：特權優先。 既然有明確的個人授權，就不用再花時間去推算角色。
+情境 3：惡意員工的「個人黑名單」
+狀況：小華是資深採購，他的角色（採購經理）原本擁有「所有採購單編輯權」。但資安偵測到他近期行為異常，管理員在 AuthUserOverride 加了一筆針對小華的 Action: Edit, Effect: 0 (Deny)。
+為何先跑「個人覆寫」？
+即使小華的角色（Role）說可以，但「個人覆寫」的 Deny 會先被抓到。在決策引擎中，一旦命中 Deny，判斷立即終止。
+原因：安全性（Short-circuit）。 最精確的限制必須最先被執行。
+情境 4：同時擁有「採購員」與「會計」多重角色
+狀況：小美跨部門支援，她同時屬於兩個群組。採購角色說「可以看採購單」，但會計角色中有一條規則說「禁止看未過帳的採購單 (Deny)」。
+為何要先「角色聚合」再進「決策矩陣」？
+系統必須先把小美身上所有的角色全部撈出來，然後在矩陣中檢查是否有任何一條 Deny。
+原因：拒絕優先 (Deny-Overrides)。 在多重身分下，只要有一個身分說「不行」，為了資安防禦，最終結果就是「不行」。
+情境 5：只能看「自己廠區」的報表
+狀況：老王的角色可以「讀取薪資報表」，但公司規定 A 廠的主管不能看 B 廠的資料。這是在 AuthRelationGrant 的 ConditionJson 寫了 {"Factory": "A"}。
+為何「套用 ConditionJson」放在最後？
+ConditionJson 通常涉及複雜的字串解析或甚至要再查一次資料（例如確認這張單據是不是 A 廠的）。
+如果老王連「看報表」的權限都沒有（前面的 Role Check 就沒過），系統就根本不需要花力氣去解析那個 JSON。
+原因：延遲運算 (Lazy Evaluation)。 只有在「大門開了（Allow）」之後，才去檢查「細節門檻」。
+總結這 5 個情境帶來的設計價值：
+下一步todo: schema 的 md 整理
+下一步todo: 整理精確的PK,雙主鍵欄位資料
+下一步todo:餵給LM做實驗
+權限管理系統 (IAM) 核心資料字典
+權限管理系統 (IAM) 核心資料字典
+用於提供開發人員與 AI 進行結構化參考。
+這些欄位是讓 AI 理解**「業務邏輯」與「資料關聯」**的關鍵，分為三類，而剔除了一類系統審計欄位 (Audit Fields)：
+結構理解 (Structure / PK)：
+如 UserId, RoleCode。
+目的：讓 AI 知道這個物件「是什麼」，以及如何唯一識別它。
+關聯串接 (Relationship / FK)：
+如 GroupCode, ResourceKey。
+目的：這是資料表之間的「橋樑」。AI 寫 SQL JOIN 時，全靠這些欄位。
+業務邏輯 (Business Logic)：
+如 Effect (准許/拒絕), IsActive (啟用狀態), ConditionJson (動態條件)。
+目的：這是程式碼判斷的核心。例如：「若 Effect=0 則阻擋」，這是 AI 寫程式邏輯 (Code Generation) 時必須知道的。
+1. 身分主體區 (Identity)
+1.1 AuthPrincipalUser (使用者主檔)
+UserId (PK): 使用者唯一識別碼 (NVARCHAR 40)。
+UserName: 登入帳號 (Unique)。
+DisplayName: 顯示名稱。
+IsActive: 是否啟用。
+IsLockedOut: 是否鎖定。
+1.2 AuthPrincipalGroup (群組主檔)
+GroupCode (PK): 群組唯一代碼 (NVARCHAR 50)。
+GroupName: 群組中文名稱。
+AppCode: 所屬系統 (NULL=共用)。
+IsActive: 是否啟用。
+1.3 AuthUserGroup (使用者群組對應)
+UserId (PK, FK): 關聯 AuthPrincipalUser.UserId。
+GroupCode (PK, FK): 關聯 AuthPrincipalGroup.GroupCode。
+AppCode: 適用系統範圍。
+ValidFrom/To: 生效與失效時間。
+2. 資源客體區 (Object)
+2.1 AuthResource (資源主檔)
+ResourceKey (PK): 資源代碼 (NVARCHAR 160, Unique)。
+ResourceName: 資源名稱 (顯示用)。
+ResourceType: 資源類型 (MENU/API/BUTTON/DATA)。
+AppCode: 所屬系統 (FK)。
+ParentResourceKey: 父層資源 (FK, 用於樹狀結構)。
+Path: 物化路徑 (例：/System/Setting/User/，優化前綴查詢)。
+SortOrder: 排序權重。
+2.2 AuthAction (動作主檔)
+ActionCode (PK): 動作代碼 (例：READ, CREATE, APPROVE)。
+ActionName: 動作名稱。
+Category: 分類 (例：CRUD, BIZ_FLOW)。
+3. 授權核心區 (Authorization)
+3.1 AuthRole (角色主檔)
+RoleCode (PK): 角色代碼 (NVARCHAR 50)。
+RoleName: 角色名稱。
+IsActive: 是否啟用。
+3.2 AuthRelationPrincipalRole (主體-角色對應)
+PrincipalRoleCode (PK): 流水號。
+RelationCode: 業務識別碼 (Unique)。
+UserId: 使用者 ID (FK, 與 GroupCode 擇一)。
+GroupCode: 群組代碼 (FK, 與 UserId 擇一)。
+RoleCode (FK): 關聯 AuthRole.RoleCode。
+AppCode: 授權生效的系統。
+ValidFrom/To: 有效期。
+3.3 AuthRelationGrant (角色授權矩陣)
+GrantCode (PK): 授權流水號。
+RoleCode (FK): 關聯 AuthRole.RoleCode。
+ResourceKey (FK): 關聯 AuthResource.ResourceKey。
+ActionCode (FK): 關聯 AuthAction.ActionCode。
+Effect: 授權效果 (1:Allow, 0:Deny)。
+ConditionJson: ABAC 動態條件 (例：{"IpRange": "192.168.1.*"})。
+4. 動態管控與稽核區 (Dynamic & Audit)
+4.1 AuthUserOverride (個人覆寫)
+(UserId, ResourceId, ActionId): PK
+UserId (PK, FK): 目標使用者 (AuthPrincipalUser.UserId)。
+ResourceKey (PK, FK): 目標資源 (AuthResource.ResourceKey)。
+ActionCode (PK, FK): 目標動作 (AuthAction.ActionCode)。
+Effect: 覆寫效果 (1:Allow, 0:Deny)。優先權高於 Role，但在邏輯上 Deny 優先。
+ConditionJson: 動態條件 (ABAC, JSON 格式)。
+ValidFrom/To: 有效期。
+IsActive: 是否啟用。
+4.2 AuthTokens (權杖管理)
+TokenId (PK): 權杖唯一碼 (JTI)。
+TokenHash: 雜湊值 (用於快速驗證)。
+UserId (FK): 權杖持有者。
+IsRevoked: 是否已撤銷 (黑名單機制)。
+ExpiresAt: 過期時間。
+AI 閱讀性檢查結果
+[x] 實體關係 (ER) 清晰度：所有 FK 都已標註來源表，AI 可自動推導 JOIN。
+[x] 層級結構：補上了 ParentResourceKey，AI 可理解選單樹狀圖。
+[x] 優先序邏輯：Override 表與 Deny Effect 的定義明確，AI 可推導權限計算邏輯 (Deny > Override > Allow)。
+DB Diagram
+如何繪製 DB Diagram (資料庫關聯圖)
+建議分為三個區域來畫，這能讓你清楚看出權限是如何從左流向右的：
+第一步：畫出五大核心主檔 (Entities)
+這五張表通常沒有 FK 指向別人（除了資源的自我關聯），它們是資料的源頭：
+• AuthPrincipalUser (左上：人)
+• AuthPrincipalGroup (左下：群)
+• AuthRole (中間：角色)
+• AuthResource (右側：物，記得畫一條線指回自己表示父子關係)
+• AuthAction (右側：動)
+第二步：畫出三個主要橋樑 (Mapping/Grant Tables)
+• AuthUserGroup：連線 User 與 Group。
+• AuthRelationPrincipalRole：從 User 畫一條線、Group 畫一條線，彙整到 Role。
+• AuthRelationGrant：這是圖表的彙整中心，從 Role、Resource、Action 各畫一條線連進來。
+第三步：畫出進階管控表
+• AuthUserOverride：從 User、Resource、Action 各連一條線進來（它是 Role-based 邏輯的旁支）。
+• AuthTokens：從 User 連一條線過來。
+繪圖小技巧：
+• 主鍵 (PK) 通常是連結的起點，外來鍵 (FK) 是終點。
+• 使用不同的顏色標註：例如身分主體用藍色，資源客體用綠色，決策關聯表（如 AuthRelationGrant）用紅色，能幫助 AI 與開發人員更快速理解架構。
+
+## Tables
+### Table 1
+序號 | 資料表名稱 | 類型 | 核心職責描述
+01 | AuthPrincipalUser | Identity | 存放使用者基本資料，權限的主體。
+02 | AuthPrincipalGroup | Identity | 存放組織/群組資料，用於實現「批量授權」。
+03 | AuthUserGroup | Mapping | 人與群組的橋樑，實現「一人多組」的靈活歸屬。
+04 | AuthResource | Object | 系統功能的樹狀清單（API, Menu, Button）。
+05 | AuthAction | Object | 標準化操作動詞（VIEW, CREATE, APPROVE）。
+06 | AuthRole | Logic | 職位或功能集合的抽象（如：採購員、倉管主管）。
+07 | AuthRelationPrincipalRole | Mapping | 人/群與角色的橋樑，決定誰擁有什麼角色。
+08 | AuthRelationGrant | Grant | 角色與功能的矩陣，權限判定的主要依據。
+09 | AuthUserOverride | Advanced | 個人覆寫，處理緊急或臨時的例外權限需求。
+10 | AuthTokens | Session | 令牌管理，處理強制登出與 JWT 安全生命週期。
+
+### Table 2
+步驟 | 順序原因 | 核心價值
+1. 物理過濾 | 把過期、停用的垃圾資料第一時間篩掉。 | 極致效能
+2. 個人覆寫 | 例外狀況最少，但權限最高，命中就收工。 | 靈活反應
+3. 角色聚合 | 處理「人多、群多、角多」的複雜關係。 | 結構化管理
+4. 決策矩陣 | 嚴格執行「Deny > Allow」的安全標準。 | 資安防禦
+5. 資料條件 | 最後才處理最耗資源的 JSON 邏輯判定。 | 精準管控

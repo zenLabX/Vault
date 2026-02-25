@@ -1,0 +1,49 @@
+# [技術規格書] 權限模組_03_使用者群組(AuthPrincipalGroup).docx
+
+## Paragraphs
+[技術規格書] 權限模組_03_使用者群組(AuthPrincipalGroup)
+一、 實體定義與用途 (Entity Purpose)
+用途：實現「邏輯分組」管理（如：專案組、外包團隊、跨廠支援），以便進行大批量的角色指派 (Batch Role Assignment)。
+架構定位：屬於 RBAC 模型中的 「G (Group)」。它作為使用者與角色之間的緩衝層，簡化了萬人系統中的管理複雜度。
+關鍵特性：支援「時間區間生效」機制（ValidFrom/To），適用於臨時性權限授權。
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關聯地圖 (Relationship Map)
+角色指派關聯：AuthPrincipalGroup.GroupCode ← AuthRelationPrincipalRole.PrincipalId (當 PrincipalType = 'GROUP')。
+成員關聯 (規劃中)：未來將透過 AuthGroupMember 連結 AuthPrincipalUser。
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+時間邊界校驗 (Validation)：
+邏輯檢查：新增或更新時，程式碼必須校驗 ValidTo 必須晚於 ValidFrom。
+自動失效處理：在計算使用者權限的存取程序 (Stored Procedure) 或服務層中，必須包含 WHERE GETDATE() BETWEEN ISNULL(ValidFrom, '1900-01-01') AND ISNULL(ValidTo, '9999-12-31')，確保過期群組不會釋放權限。
+刪除 (Delete) 禁令與風險：
+連鎖反應：刪除一個群組前，必須確認 AuthRelationPrincipalRole 中已無關聯該 GroupCode 的角色。
+孤兒預防：若群組內包含數千名使用者，物理刪除可能導致大範圍的權限異動計算。建議優先使用 IsActive = 0。
+多系統支援 (AppCode)：
+權限污染防護：查詢特定系統（如 PMS）的權限時，必須強制過濾 AppCode = 'PMS' OR AppCode IS NULL，防止其他系統的群組權限意外污染當前系統。
+五、 維運情境範例 (給 NotebookLM 的推理素材)
+Q：為什麼外包團隊今天突然無法存取系統？
+AI 應引導檢查：ValidTo 是否已過期、IsActive 是否被管理員關閉。
+Q：如何建立一個所有子系統都能使用的「全公司公告群組」？
+AI 應建議：建立一個 AppCode 為 NULL 的群組。
+Q：想知道某個群組是誰在什麼時候修改過描述？
+AI 應參考：ModifiedBy 與 ModifiedDate 欄位。
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 使用者群組 | 英文表名 | AuthPrincipalGroup
+主鍵 PK | GroupCode | 外來鍵 FK | AuthRelationPrincipalRole.GroupCode
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | GroupId | INT (IDENTITY) | 是 | 實體 PK。群組內部流水號。
+2 | GroupCode | NVARCHAR(50) | 是 | 邏輯 PK / UNIQUE。群組代碼（如：CUT_TEAM_A）。業務關聯的核心鍵值。
+3 | GroupName | NVARCHAR(100) | 是 | 群組名稱。
+4 | GroupDesc | NVARCHAR(200) | 否 | 群組用途描述。
+5 | AppCode | NVARCHAR(50) | 否 | 多系統隔離標記。指定所屬系統（如 PMS、APS）；若留空則代表跨系統共用群組。
+6 | Tags | NVARCHAR(200) | 否 | 搜尋標籤。建議以逗號分隔，用於快速篩選特定屬性的群組。
+7 | IsActive | BIT | 是 | 是否啟用。0 為停用。
+8 | ValidFrom | DATETIME | 否 | 生效起始時間。早於此時間點，該群組權限不生效。
+9 | ValidTo | DATETIME | 否 | 失效結束時間。晚於此時間點，群組權限自動失效。
+10-13 | Audit Fields | — | — | 包含 CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+14 | RowVersion | ROWVERSION | 是 | 併發控制 (Optimistic Locking)。

@@ -1,0 +1,95 @@
+# [技術規格書] 權限模組_10_使用者群組對應表 (AuthUserGroup).docx
+
+## Paragraphs
+技術規格書] 權限模組_10_使用者群組對應表 (AuthUserGroup)
+這張 AuthUserGroup 表是整個權限架構中，將「人」轉化為「群體」的最後一公里。透過這張表，您可以實現「一人多組」的靈活調度，而不必頻繁修改每個人的個別權限。
+這也是您之前提到的 RBAC 完整鏈條中，U (User) 到 G (Group) 的關鍵連結。
+設計邏輯說明
+複合主鍵設計：採用 (UserId, GroupCode) 作為 PK。這能確保資料層級的唯一性，防止同一個使用者在同一個群組中出現重複配置，同時在查詢時（給予 UserId 查所有群組）具備極高的索引效能。
+關聯方式：
+UserId 關聯至 AuthPrincipalUser.UserId。
+GroupCode 關聯至 AuthPrincipalGroup.GroupCode。
+一、 實體定義與用途 (Entity Purpose)
+用途：維護「使用者屬於哪些群組」的名冊。透過群組化管理（如：專案組、廠區組、外包組），大幅降低維護數萬名使用者個別角色的行政成本。
+架構地位：本表是系統中「身分歸類」的實作層，定義了使用者與邏輯群組的隸屬關係。
+權限流轉邏輯：
+User → AuthUserGroup → AuthPrincipalGroup → AuthRelationPrincipalRole → AuthRole。
+權限決策優先序：
+DENY (任何來源) ＞ UserOverride (個人覆寫) ＞ Role Grants (來自個人或群組)。
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關鍵約束與索引 (Constraints & Indexes)
+設計規範：本表採用 (UserId, GroupCode) 作為複合主鍵，天生防止了「同一人在同一個群組出現兩次」的重複資料問題。
+1. 效能索引策略 (Performance Indexes)
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+1. 跨系統權限污染防護
+AppCode 核對：
+當 PMS 系統在檢核權限時，必須包含條件 WHERE (AppCode = 'PMS' OR AppCode IS NULL)。這能確保某人在 APS 系統擁有的「管理員群組」身份，不會意外帶入 PMS 系統。
+2. 時效性控制 (Temporal Access)
+自動權限收回：
+針對外包商或臨時專案人員，強制要求填寫 ValidTo。
+查詢決策邏輯：查詢時必須包含 GETDATE() BETWEEN ISNULL(ValidFrom, '1900-01-01') AND ISNULL(ValidTo, '9999-12-31')。
+3. 快取一致性 (Cache Invalidation)
+人組變動 = 權限重算：
+只要 AuthUserGroup 有任何增刪改，該使用者的 Redis Permission Cache 必須立即作廢 (Purge)。因為加入新群組代表可能獲得了新的角色，如果不清快取，權限異動可能要等快取過期才會生效。
+五、 維運情境範例 (Troubleshooting)
+Q：使用者被加入「研發組」，但卻看不到研發頁面？
+檢查點：
+IsActive 是否為 1？
+ValidFrom 是否還沒到？
+AppCode 是否設定錯誤（例如設成 APS 導致在 PMS 無效）？
+Q：如何快速將某個離職人員的所有群組權限拔除？
+操作：UPDATE AuthUserGroup SET IsActive = 0 WHERE UserId = 'Emp123'。
+Q：專案結束了，如何知道有哪些人是專案成員？
+查詢：SELECT UserId FROM AuthUserGroup WHERE GroupCode = 'PROJECT_X'。
+六、 附錄：標準化 SQL Script
+SQL
+CREATE TABLE dbo.AuthUserGroup (
+UserId        NVARCHAR(40)  NOT NULL,
+GroupCode     NVARCHAR(50)  NOT NULL,
+AppCode       NVARCHAR(50)  NULL,
+ValidFrom     DATETIME      NULL,
+ValidTo       DATETIME      NULL,
+IsActive      BIT           NOT NULL DEFAULT(1),
+Remark        NVARCHAR(200) NULL,
+CreatedBy     NVARCHAR(50)  NOT NULL DEFAULT('System'),
+CreatedDate   DATETIME      NOT NULL DEFAULT(GETDATE()),
+ModifiedBy    NVARCHAR(50)  NULL,
+ModifiedDate  DATETIME      NULL,
+RowVersion    ROWVERSION    NOT NULL,
+-- 複合主鍵：防止重複歸屬
+CONSTRAINT PK_AuthUserGroup PRIMARY KEY CLUSTERED (UserId, GroupCode),
+-- 外鍵約束
+CONSTRAINT FK_AUG_User  FOREIGN KEY (UserId)    REFERENCES dbo.AuthPrincipalUser(UserId),
+CONSTRAINT FK_AUG_Group FOREIGN KEY (GroupCode) REFERENCES dbo.AuthPrincipalGroup(GroupCode),
+-- 日期邏輯檢查
+CONSTRAINT CK_AUG_DateRange CHECK (ValidFrom IS NULL OR ValidTo IS NULL OR ValidFrom <= ValidTo)
+);
+-- 輔助索引：依群組反查成員
+CREATE NONCLUSTERED INDEX IX_AuthUserGroup_Group
+ON dbo.AuthUserGroup(GroupCode, IsActive)
+INCLUDE (UserId, ValidTo);
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 使用者群組對應表 | 英文表名 | AuthUserGroup
+主鍵 PK | (UserId, GroupCode)（複合主鍵） | 外來鍵 FK | AuthPrincipalUser (UserId)
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | UserId | NVARCHAR(40) | 是 (PK) | 使用者唯一識別碼。對應（FK → AuthPrincipalUser.UserId）
+2 | GroupCode | NVARCHAR(50) | 是 (PK) | 群組代碼。Unique，對應（FK → AuthPrincipalGroup.GroupCode）
+3 | AppCode | NVARCHAR(50) | 否 | 所屬系統。指定此隸屬關係僅在特定系統生效 (如 PMS, APS)；留空代表全域。
+4 | ValidFrom | DATETIME | 否 | 生效時間。早於此時間點，群組身份不生效。
+5 | ValidTo | DATETIME | 否 | 失效時間。過期後自動失去該群組的所有相關權限。
+6 | IsActive | BIT | 是 | 是否啟用。1: 啟用, 0: 停用。用於行政凍結。
+7 | Remark | NVARCHAR(200) | 否 | 備註說明。用於稽核或記錄加入群組的原因。
+8-11 | Audit Fields | — | — | 包含 CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+12 | RowVersion | ROWVERSION | 是 | 併發控制。
+
+### Table 3
+索引名稱 | 核心欄位組合 | 用途與情境
+PK_AuthUserGroup | (UserId, GroupCode) | 主體查詢：登入時快速抓取使用者所屬的所有群組 ID，以便載入後續權限。
+IX_AUG_GroupToUsers | (GroupCode, IsActive) | 成員管理：從群組管理介面查看「這個群組下面有哪些人」，或是大範圍權限回收時使用。
+IX_AUG_ValidTo | (ValidTo) | 自動清理：找出所有已經過期的成員關係，進行系統提醒或批次停用。

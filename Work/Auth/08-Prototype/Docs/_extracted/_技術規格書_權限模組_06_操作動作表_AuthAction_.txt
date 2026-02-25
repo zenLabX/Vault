@@ -1,0 +1,87 @@
+# [技術規格書] 權限模組_06_操作動作表 (AuthAction).docx
+
+## Paragraphs
+[技術規格書] 權限模組_06_操作動作表 (AuthAction)
+一、 實體定義與用途 (Entity Purpose)
+架構地位：本表是權限系統的「動詞」，定義了系統中所有可執行的操作行為。
+用途：標準化系統中的操作指令，防止開發人員在程式碼中定義重複或模糊的字串（例如：有人用 "Read"、有人用 "View"、有人用 "Show"）。
+架構定位：
+授權綁定：在 AuthRelationGrant 中，將「角色」與「資源」透過此表的 ActionCode 進行連結（Who can do Action on Resource）。
+UI 呈現控制：透過 Category 與 SortOrder，決定權限設定畫面中，動作勾選框 (Checkbox) 的分組與排列順序。
+核心邏輯：
+通用性原則：動作應盡量通用（如 APPROVE），而非綁定特定資源（如 APPROVE_ORDER）。資源的區分應由 AuthResource 負責。
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關鍵約束與索引 (Constraints & Indexes)
+為了確保權限定義的嚴謹性，必須實作以下資料庫約束：
+唯一性約束 (Uniqueness)：
+約束名稱：UX_AuthAction_Code
+欄位：(ActionCode)
+目的：確保動作代碼全系統唯一，這是授權邏輯的基石。
+資料格式檢查 (Check Constraints)：
+約束名稱：CK_AuthAction_Code_Format
+規則：ActionCode NOT LIKE '%[^A-Z0-9_-]%'
+目的：強制 ActionCode 只能包含大寫字母、數字、底線與連字號。禁止空格與特殊符號。
+效能索引策略 (Performance Indexes)
+設計規範：所有索引必須包含 ActionCode 作為 INCLUDE 欄位，以支援 Index-Only Scan，減少對叢集索引 (Clustered Index) 的存取次數，降低 IO 負擔。
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+系統預設值保護 (System Defaults Protection)
+不可變更原則：禁止修改核心動作（如 VIEW, CREATE）的 ActionCode，否則會導致程式碼中的權限檢查邏輯全部失效。
+建議：在 API 層攔截針對核心代碼的 DELETE/UPDATE 操作。
+粒度控制 (Granularity Strategy)
+避免過度細分：不要建立 APPROVE_LEVEL_1。層級控制應交由 ABAC 的 Conditions 欄位處理。
+避免綁定資源：不要建立 READ_ORDER。應建立通用的 READ，在授權表中再與資源結合。
+快取策略 (Caching)
+極低頻異動：本表變更頻率極低。建議設定 24 小時長快取，或在應用程式啟動時載入為 Singleton。
+五、 維運情境範例 (Troubleshooting)
+Q：在程式碼寫了 Check("View") 卻無效？
+檢查點：確認大小寫。資料庫定義為 VIEW，字串必須完全匹配。
+Q：權限設定畫面幾百個動作混在一起很亂？
+建議：補齊 Category 欄位並調整 SortOrder，將常用的 VIEW, EDIT 排在前面。
+Q：想刪除不再使用的舊動作？
+建議：不要物理刪除。請將 IsEnabled 更新為 0，以維持歷史授權紀錄的關聯完整性。
+六、 附錄：初始化資料腳本 (Reference Script)
+SQL
+-- 1. 確保 ActionCode 格式正確
+ALTER TABLE dbo.AuthAction ADD CONSTRAINT CK_AuthAction_Code_Format
+CHECK (ActionCode NOT LIKE '%[^A-Z0-9_-]%' AND LEN(ActionCode) BETWEEN 2 AND 50);
+-- 2. 寫入標準動作
+INSERT INTO dbo.AuthAction(ActionCode, ActionName, Category, SortOrder, IsBasicAction) VALUES
+-- 基礎 CRUD
+(N'VIEW',      N'檢視',         N'READ',       10, 1),
+(N'CREATE',    N'新增',         N'WRITE',      20, 1),
+(N'EDIT',      N'編輯',         N'WRITE',      30, 1),
+(N'DELETE',    N'刪除',         N'WRITE',      40, 1),
+-- 資料輸出
+(N'EXPORT',    N'匯出',         N'OUTPUT',     50, 0),
+(N'PRINT',     N'列印',         N'OUTPUT',     60, 0),
+-- 簽核流程 (Workflow)
+(N'SUBMIT',    N'送出',         N'WORKFLOW',   70, 0),
+(N'APPROVE',   N'核准',         N'WORKFLOW',   80, 0),
+(N'REJECT',    N'駁回',         N'WORKFLOW',   85, 0),
+(N'VOID',      N'作廢',         N'WORKFLOW',   90, 0);
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 動作主檔 | 英文表名 | AuthAction
+主鍵 PK | ActionCode | 外來鍵 FK | —
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | ActionId | INT (IDENTITY) | 是 | 實體 PK。資料庫內部流水號，用於索引效能最佳化。
+2 | ActionCode | NVARCHAR(50) | 是 | 邏輯 PK / 業務代碼。全域唯一，建議全大寫 (如 CREATE, VIEW)。
+3 | ActionName | NVARCHAR(100) | 是 | 顯示名稱。如「新增」、「檢視」。可支援 i18n 多語系。
+4 | Category | NVARCHAR(50) | 否 | 動作類別。例：READ (讀取類), WRITE (寫入類), WORKFLOW (簽核類)。
+5 | SortOrder | INT | 是 | 顯示排序。數值小者在前。決定 UI 畫面排列順序。
+6 | IsEnabled | BIT | 是 | 是否啟用。1: 啟用, 0: 停用 (軟刪除)。
+7 | IsBasicAction | BIT | 是 | 基礎動作標記。1: 通用型 CRUD；0: 特殊業務動作。
+8 | Description | NVARCHAR(200) | 否 | 說明。描述該動作的副作用或適用場景。
+9-12 | Audit Fields | — | — | 包含 CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+13 | RowVersion | ROWVERSION | 是 | 併發控制。防止多人同時修改動作定義。
+
+### Table 3
+索引名稱 | 核心欄位組合 (Key Columns) | 描述與維運情境
+IX_AuthAction_IsEnabled | (IsEnabled) | 快取預熱 (Cache Warming)：系統啟動或排程更新時，一次性載入所有「啟用中」的動作至 Redis 或記憶體 Singleton。
+IX_AuthAction_Category | (Category, SortOrder) | UI 渲染優化：當管理員開啟「權限設定頁面」時，此索引能確保動作清單能依「類別」分組並依「預設順序」瞬間排序產出。
+IX_AuthAction_ActionCode | (ActionCode) | 邏輯關聯查詢：當 API 進行權限校驗（如 Check("EDIT")）時，系統需頻繁透過此代碼反查 ActionId 或屬性。

@@ -1,0 +1,109 @@
+# [技術規格書] 權限模組_07_授權設定表 (AuthRelationGrant).docx
+
+## Paragraphs
+[技術規格書] 權限模組_07_授權設定表 (AuthRelationGrant)
+這張表是整套系統的「大腦」，決定了權限判斷的最終結果。它是萬人系統中資料量最大（可能達數百萬筆）、讀取最頻繁（每個 API Call 都要查）的表。
+一、 實體定義與用途 (Entity Purpose)
+架構地位：本表是權限系統的「決策矩陣 (Decision Matrix)」。
+核心功能：透過「角色 (Who) + 資源 (Where) + 動作 (What) = 效果 (Allow/Deny)」的公式，定義系統的存取規則。
+邏輯三要素：一筆授權紀錄代表「某角色 (RoleCode)，對某資源 (ResourceKey)，執行某動作 (ActionCode)」的准許或拒絕。
+混合模式 (Hybrid RBAC/ABAC)：
+RBAC：透過 RoleCode 進行基礎綁定。
+ABAC：透過 ConditionJson 欄位，實現「動態條件判斷」（例如：只能讀取 Factory = 'TW01' 的訂單）。
+決策優先級 (Resolution Strategy)：
+Deny Override：若使用者擁有多個角色，其中任何一個角色對該資源設定為 Effect = 0 (DENY)，則最終結果為拒絕。
+Explicit Allow：若無拒絕，且至少有一筆 Effect = 1 (ALLOW)，則允許。
+Default Deny：若無任何匹配紀錄，預設為拒絕。
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關鍵約束與索引 (Constraints & Indexes)
+為了支撐萬人併發的高頻查詢（High-Frequency Read），索引設計必須配合應用層的查詢模式。
+1. 資料完整性約束 (Constraints)
+日期邏輯檢查：CHECK (ValidFrom IS NULL OR ValidTo IS NULL OR ValidFrom <= ValidTo)。
+效果值檢查：CHECK (Effect IN (0,1))。
+避免重複規則：
+透過 篩選唯一索引 (Filtered Unique Index)，限制「同一角色、資源、動作」在「無條件且無期限」的情況下，只能有一筆紀錄。避免邏輯冗餘。
+2. 效能索引策略 (Performance Indexes)
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+1. 寫入 (Write) 安全規範
+Deny 優先原則教育：在開發 UI 時，必須提示管理員：「若您設定了 Deny，該角色下的使用者絕對無法使用此功能，即使其他角色有 Allow」。
+JSON 格式驗證：應用層寫入 ConditionJson 前，必須驗證是否為合法的 JSON 格式，否則會導致執行期間解析錯誤 (Runtime Error)。
+2. 查詢 (Read) 效能陷阱
+禁止資料庫層級 JSON 解析：
+❌ Bad Practice：WHERE JSON_VALUE(ConditionJson, '$.Factory') = 'T1'。這會導致全表掃描，效能極差。
+✅ Best Practice：資料庫僅負責回傳 JSON 字串，由應用層 (C# / Java / Node) 解析並比對條件。
+快取策略：此表適合依 RoleCode 為單位進行快取 (Role-Based Cache)。當 AuthRelationGrant 有異動時，必須清除對應 Role 的 Redis Key。
+五、 維運情境範例 (Troubleshooting)
+Q：使用者擁有兩個角色，一個允許 (Allow)、一個沒設定，為什麼結果是允許？
+推理：系統採「白名單 (Whitelist)」機制。只要有一個角色說 Allow 且沒有人說 Deny，結果即為 Pass。
+Q：使用者抱怨權限明明有開，但還是進不去？
+檢查點：
+是否有過期設定？ (ValidTo < Now)
+是否有隱藏的 Deny？ (檢查該使用者其他角色的設定)
+ConditionJson 中的條件是否滿足？ (例如限制了 Factory，但使用者正在存取另一個 Factory 的資料)
+Q：權限表資料暴增到 1000 萬筆，查詢變慢？
+建議：檢查 IX_AuthGrant_Validation 索引的碎片率 (Fragmentation)。若經常異動，需定期重建索引。
+六、 附錄：標準化 SQL Script (Standardized Schema)
+修正原始腳本中的型別不一致，統一採用 NVARCHAR 業務主鍵。
+SQL
+CREATE TABLE dbo.AuthRelationGrant (
+GrantCode     NVARCHAR(40)  NOT NULL CONSTRAINT PK_AuthRelationGrant PRIMARY KEY,
+RoleCode      NVARCHAR(50)  NOT NULL,
+ResourceKey   NVARCHAR(160) NOT NULL,
+ActionCode    NVARCHAR(50)  NOT NULL,
+Effect        BIT           NOT NULL CONSTRAINT DF_AuthGrant_Effect DEFAULT(1), -- 1:Allow, 0:Deny
+IsActive      BIT           NOT NULL CONSTRAINT DF_AuthGrant_IsActive DEFAULT(1),
+ConditionJson NVARCHAR(MAX) NULL,
+ValidFrom     DATETIME      NULL,
+ValidTo       DATETIME      NULL,
+Remark        NVARCHAR(200) NULL,
+CreatedBy     NVARCHAR(50)  NOT NULL DEFAULT('System'),
+CreatedDate   DATETIME      NOT NULL DEFAULT(GETDATE()),
+ModifiedBy    NVARCHAR(50)  NULL,
+ModifiedDate  DATETIME      NULL,
+RowVersion    ROWVERSION    NOT NULL,
+-- 外鍵約束 (確保參考完整性)
+CONSTRAINT FK_AuthGrant_Role     FOREIGN KEY (RoleCode)     REFERENCES dbo.AuthRole(RoleCode),
+CONSTRAINT FK_AuthGrant_Resource FOREIGN KEY (ResourceKey)  REFERENCES dbo.AuthResource(ResourceKey),
+CONSTRAINT FK_AuthGrant_Action   FOREIGN KEY (ActionCode)   REFERENCES dbo.AuthAction(ActionCode),
+-- 邏輯約束
+CONSTRAINT CK_AuthGrant_DateRange CHECK (ValidFrom IS NULL OR ValidTo IS NULL OR ValidFrom <= ValidTo)
+);
+-- 核心效能索引 (涵蓋查詢 - Covering Index)
+CREATE NONCLUSTERED INDEX IX_AuthGrant_Validation
+ON dbo.AuthRelationGrant(ResourceKey, ActionCode, RoleCode)
+INCLUDE (Effect, ConditionJson, ValidFrom, ValidTo, IsActive);
+-- 角色反查索引
+CREATE NONCLUSTERED INDEX IX_AuthGrant_RoleView
+ON dbo.AuthRelationGrant(RoleCode)
+INCLUDE (ResourceKey, ActionCode, Effect);
+-- 避免重複規則 (針對無條件、無期限的標準授權)
+CREATE UNIQUE NONCLUSTERED INDEX UX_AuthGrant_UniqueRule
+ON dbo.AuthRelationGrant(RoleCode, ResourceKey, ActionCode)
+WHERE ConditionJson IS NULL AND ValidFrom IS NULL AND ValidTo IS NULL;
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 功能群組與功能對應表 | 英文表名 | AuthRelationGrant
+主鍵 PK | GrantCode | 外來鍵 FK | AuthRole(RoleCode), AuthResource(ResourceKey), AuthAction(ActionCode)
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | GrantCode | NVARCHAR(40) | 是 | PK。授權流水號 (UUID/GUID)。
+2 | RoleCode | NVARCHAR(50) | 是 | FK。對應 AuthRole.RoleCode。
+3 | ResourceKey | NVARCHAR(160) | 是 | FK。對應 AuthResource.ResourceKey。
+4 | ActionCode | NVARCHAR(50) | 是 | FK。對應 AuthAction.ActionCode。
+5 | Effect | BIT | 是 | 授權效果。1: ALLOW (允許), 0: DENY (拒絕)。注意：DENY 權重最高。（決策優先：Deny > Override > Role）
+6 | IsActive | BIT | 是 | 是否啟用。用於快速開關某條權限規則，而不需物理刪除。
+7 | ConditionJson | NVARCHAR(MAX) | 否 | ABAC 條件 (JSON)。例：{"Factory":["T1"], "AmountLimit": 5000}。若為 NULL 代表無條件全開。
+8 | ValidFrom | DATETIME | 否 | 生效時間 (NULL = 立即生效)。
+9 | ValidTo | DATETIME | 否 | 失效時間 (NULL = 永不失效)。
+10 | Remark | NVARCHAR(200) | 否 | 備註。說明授權原因（如：2024 年度稽核暫時開放）。
+11-14 | Audit Fields | — | — | 包含 CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+15 | RowVersion | ROWVERSION | 是 | 併發控制。
+
+### Table 3
+索引名稱 | 欄位組合 | 用途與情境
+IX_AuthGrant_Validation | (ResourceKey, ActionCode, RoleCode) Include: Effect, ConditionJson, ValidFrom, ValidTo | 核心判斷 (Critical Path)： 當 API 驗證權限時，系統會傳入 (Resource, Action) 以及使用者的 (Role List)。此索引能讓 DB 直接過濾出相關授權並回傳，完全不需要回表 (Key Lookup)，是效能優化的關鍵。
+IX_AuthGrant_RoleView | (RoleCode) Include: ResourceKey, ActionCode | 後台管理/登入預載： 1. 管理員查看「某角色有哪些權限」時使用。 2. 使用者登入後，一次拉取所有權限至 Redis 快取時使用。

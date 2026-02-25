@@ -1,0 +1,98 @@
+# [技術規格書] 權限模組_09_權杖管理表 (AuthTokens).docx
+
+## Paragraphs
+[技術規格書] 權限模組_09_權杖管理表 (AuthTokens)
+這張表是權限系統的「看門狗」。在現代化的前後端分離架構（Stateless）中，通常 JWT (JSON Web Token) 是不存資料庫的。
+但為了達成**「即時強制登出 (Force Logout)」與「稽核軌跡 (Audit Trail)」**，我們必須採取 Stateful JWT 策略，也就是將發出的 Token 登記在庫。這雖然犧牲了一點寫入效能，但換來了最高的安全性管控。
+一、 實體定義與用途 (Entity Purpose)
+架構地位：本表是系統的「會話狀態庫 (Session State Store)」。
+用途：
+即時撤銷 (Revocation)：當使用者帳號異常或更改密碼時，透過標記 IsRevoked=1，即時阻斷該 Token 的後續存取，解決傳統 JWT 無法中途失效的痛點。
+稽核與追蹤：記錄 Token 的簽發來源 (Source) 與實際使用者 (EffectiveUserId)，特別是用於「代理登入 (Impersonation)」場景的責任釐清。
+核心機制：API Gateway 或 Middleware 在驗證 Token 簽章正確後，會額外查詢此表，確認該 Token 是否「存在」且「未被撤銷」。
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關鍵約束與索引 (Constraints & Indexes)
+此表是典型的高寫入、高查詢資料表（High Write/Read Throughput），索引設計必須精準。
+1. 資料完整性 (Constraints)
+生命週期檢查：CHECK (ExpiresAt > IssuedAt)。確保不會簽發一張「出生即死亡」的 Token。
+2. 效能索引策略 (Performance Indexes)
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+1. 儲存優化策略 (Storage Optimization)
+雜湊查詢原則：
+Token 欄位通常很長（可能超過 1KB），直接拿來做索引或 WHERE Token = '...' 查詢會導致 Page Splits 與嚴重的 IO 效能問題。
+強制規範：所有查詢必須透過 TokenHash (SHA-256 = 32 bytes) 進行。Token 欄位僅供事後稽核或除錯讀取。
+2. 資料清理 (Data Retention)
+炸庫風險：萬人系統每天可能產生數萬筆 Token。如果不清理，一年後這張表會達到千萬級別。
+TTL 策略：必須實作一支 Background Job，每小時或每天刪除 ExpiresAt < NOW - 7 Days 的資料（保留 7 天緩衝供稽核查詢）。
+3. 安全性 (Security)
+EffectiveUserId：在實作「模擬登入 (Impersonation)」時，切記不要只改 Token 裡的 sub (Subject)。必須在此表記錄 EffectiveUserId = 管理員ID，這樣日後出事才能追查是「誰」假裝成了使用者。
+五、 維運情境範例 (Troubleshooting)
+Q：使用者明明改了密碼，為什麼舊手機還能登入？
+檢查點：改密碼的程式邏輯中，是否漏了執行 UPDATE AuthTokens SET IsRevoked=1 WHERE UserId = ?？
+Q：系統回應變慢，DB CPU 飆高？
+AI 推理：檢查是否有程式直接使用 WHERE Token = 'eyJhbGci...' 進行查詢，而非使用 Hash。長字串比對極耗 CPU。
+Q：如何統計目前的「線上同時在線人數 (CCU)」？
+查詢：SELECT COUNT(DISTINCT UserId) FROM AuthTokens WHERE ExpiresAt > GETDATE() AND IsRevoked = 0。
+六、 附錄：標準化 SQL Script (Standardized Schema)
+SQL
+CREATE TABLE dbo.AuthTokens (
+TokenId         BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_AuthTokens PRIMARY KEY,
+Token           VARCHAR(MAX)   NOT NULL, -- 僅供存檔，不作查詢條件
+TokenHash       VARBINARY(32)  NOT NULL, -- SHA256 Hash，核心查詢鍵
+UserId          NVARCHAR(40)   NOT NULL, -- FK to AuthPrincipalUser
+Source          VARCHAR(50)    NOT NULL, -- FK to SourceSystems (若有)
+AppCode         NVARCHAR(32)   NOT NULL,
+EffectiveUserId NVARCHAR(64)   NULL,     -- 代理人/操作者 ID
+IssuedAt        DATETIME       NOT NULL DEFAULT(GETDATE()),
+ExpiresAt       DATETIME       NOT NULL,
+IsRevoked       BIT            NOT NULL DEFAULT(0),
+CreatedBy       NVARCHAR(50)   NULL,
+CreatedDate     DATETIME       NULL DEFAULT(GETDATE()),
+ModifiedBy      NVARCHAR(50)   NULL,
+ModifiedDate    DATETIME       NULL,
+RowVersion      ROWVERSION     NOT NULL,
+-- 外鍵約束
+CONSTRAINT FK_AuthTokens_User FOREIGN KEY (UserId) REFERENCES dbo.AuthPrincipalUser(UserId),
+-- 邏輯約束
+CONSTRAINT CK_AuthTokens_LifeCycle CHECK (ExpiresAt > IssuedAt)
+);
+-- 1. 核心驗證索引 (Hash Search)
+CREATE NONCLUSTERED INDEX IX_AuthTokens_Hash
+ON dbo.AuthTokens(TokenHash)
+INCLUDE (UserId, IsRevoked, ExpiresAt, AppCode);
+-- 2. 使用者維度索引 (For Revocation)
+CREATE NONCLUSTERED INDEX IX_AuthTokens_User
+ON dbo.AuthTokens(UserId)
+INCLUDE (TokenId, IsRevoked, ExpiresAt);
+-- 3. 清理與統計索引
+CREATE NONCLUSTERED INDEX IX_AuthTokens_Cleanup
+ON dbo.AuthTokens(ExpiresAt)
+INCLUDE (IsRevoked);
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | Tokens管理主表 | 英文表名 | AuthTokens
+主鍵 PK | TokenId | 外來鍵 FK | AuthPrincipalUser (UserId)
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | TokenId | BIGINT (IDENTITY) | 是 | 實體 PK。自動遞增流水號，作為內部關聯鍵。
+2 | Token | VARCHAR(MAX) | 是 | 原始權杖。存放完整的 JWT 字串。供除錯與內容解析使用。
+3 | TokenHash | VARBINARY(32) | 是 | 搜尋索引鍵。存放 Token 的 SHA-256 雜湊值。查詢時比對此欄位而非 Token 本體，以提升效能。
+4 | UserId | NVARCHAR(40) | 是 | FK。權杖所屬的使用者帳號。
+5 | Source | VARCHAR(50) | 是 | 來源系統。如 PMS, Trade, MobileApp。用於區分登入入口。
+6 | AppCode | NVARCHAR(32) | 是 | 應用代碼。標示此 Token 授權存取的目標系統（如 ERP、MES）。
+7 | EffectiveUserId | NVARCHAR(64) | 否 | 代理人 ID。若為「管理員模擬登入」，此處記錄實際操作者 ID，UserId 記錄被模擬者。
+8 | IssuedAt | DATETIME | 是 | 簽發時間 (預設 GETDATE())。
+9 | ExpiresAt | DATETIME | 是 | 過期時間。必須與 JWT Payload 中的 exp 一致。用於排程清理。
+10 | IsRevoked | BIT | 是 | 撤銷標記。1: 已撤銷 (黑名單), 0: 有效。
+11-14 | Audit Fields | — | — | CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+15 | RowVersion | ROWVERSION | 是 | 併發控制。
+
+### Table 3
+索引名稱 | 欄位組合 | 用途與情境
+IX_AuthTokens_Hash | (TokenHash) Include: IsRevoked, ExpiresAt, UserId | API 驗證 (Hot Path)： Middleware 攔截請求時，計算 Header Token 的 Hash，並透過此索引快速確認 IsRevoked 狀態。這是全系統最頻繁的查詢。
+IX_AuthTokens_User | (UserId) Include: TokenId, IsRevoked | 強制登出 (Kill Session)： 當使用者修改密碼或被停權時，透過此索引快速找出該人所有 IsRevoked=0 的 Token 並設為 1。
+IX_AuthTokens_Cleanup | (ExpiresAt) Filter: WHERE ExpiresAt < GETDATE() | 排程清理 (TTL Job)： 用於夜間排程，批次物理刪除已過期的 Token，防止資料表無限膨脹。

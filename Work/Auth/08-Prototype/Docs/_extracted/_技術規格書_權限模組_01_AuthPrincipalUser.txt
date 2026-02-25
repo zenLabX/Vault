@@ -1,0 +1,73 @@
+# [技術規格書] 權限模組_01_AuthPrincipalUser.docx
+
+## Paragraphs
+[技術規格書] 權限模組_01_AuthPrincipalUser
+一、 實體定義與用途 (Entity Purpose)
+用途：帳號主檔；支援鎖定、二階段驗證、密碼政策與審計欄位。
+架構定位：本表為系統所有主體 (Principal) 的根源，定義了使用者身分、安全驗證狀態與稽核軌跡。在萬人規模系統中，此表的高可用性與資料完整性至關重要。
+關聯：
+與 AuthPrincipalRole (PrincipalType='USER') 關聯以取得角色
+與 AuthUserOverride 關聯以套用個人覆寫權限
+二、 資料表規格 (Schema)
+欄位清單：
+索引建議：
+UX_AuthPrincipalUser_UserName：(UNIQUE, UserName)
+UX_AuthPrincipalUser_Email：(UNIQUE, Email) – 可允許多個 NULL
+IX_AuthPrincipalUser_AdAccount：(Nonclustered, AdAccount)
+IX_AuthPrincipalUser_LastLoginDate：(Nonclustered, LastLoginDate)
+三、 關聯邏輯 (Relationships)
+角色關聯：透過 UserId 關聯至 AuthPrincipalRole (當 PrincipalType = 'USER')。
+權限覆蓋：透過 UserId 關聯至 AuthUserOverride 進行個人化權限調整。
+群組關聯：透過 UserId 關聯至 AuthUserGroup。
+四、 CRUD 安全操作規範 (Safety Guardrails)
+為了支撐萬人使用並確保系統不崩潰，開發者必須遵循：
+新增 (Create)：
+必須先校驗 UserName 與 Email 的唯一性。
+初始化時 AccessFailedCount 必須為 0。
+更新 (Update)：
+必須使用 RowVersion：更新條件必須包含 WHERE UserId = @id AND RowVersion = @version，若影響列數為 0，應拋出「資料已被異動」異常。
+敏感變動連鎖反應：若 IsActive 改為 0 或 IsLockedOut 改為 1，應立即失效 AuthTokens 表中該用戶的所有 Token。
+刪除 (Delete)：
+嚴禁物理刪除：僅允許透過 IsActive = 0 進行軟刪除，以維持稽核軌跡連貫。
+孤兒數據檢查：若需物理刪除，必須先清理 AuthRelationPrincipalRole、AuthUserGroup 及 AuthTokens。
+五、 維運排錯 SOP (Troubleshooting for NotebookLM)
+如果你問 NotebookLM 以下問題，它應根據上述資料給出回答：
+Q: 為什麼使用者帳號正確卻無法登入？
+AI 應引導檢查：IsActive 是否為 0、IsLockedOut 是否為 1、或 LockoutEndAt 時間是否尚未屆滿。
+Q: 懷疑資料被兩個管理員同時改壞了？
+AI 應引導檢查：RowVersion 欄位與 ModifiedBy / ModifiedDate 審計資訊。
+Q: 使用者反映密碼沒改卻不能用？
+AI 應引導檢查：MustChangePassword 狀態以及 PasswordAlgo 是否近期有變動。
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 使用者主檔 | 英文表名 | AuthPrincipalUser
+主鍵 PK | UserId | 外來鍵 FK | AuthPrincipalRole.UserId AuthUserOverride.UserId
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 是否為空 | 預設值 | 描述
+1 | UserId | NVARCHAR(40) | NOT NULL | — | 使用者流水號 (PK)
+2 | UserName | NVARCHAR(50) | NOT NULL | — | 使用者登入帳號；UNIQUE
+3 | DisplayName | NVARCHAR(100) | NOT NULL | '' | 顯示名稱
+4 | Email | NVARCHAR(200) | NULL | NULL | 電子郵件；建議 UNIQUE
+5 | PasswordHash | NVARCHAR(255) | NOT NULL | '' | 密碼雜湊（含 Salt 或額外欄位）
+6 | PasswordAlgo | NVARCHAR(50) | NOT NULL | 'PBKDF2-SHA256' | 密碼雜湊演算法標記
+7 | IsActive | BIT | NOT NULL | 1 | 是否啟用
+8 | IsLockedOut | BIT | NOT NULL | 0 | 是否鎖定
+9 | LockoutEndAt | DATETIME | NULL | NULL | 鎖定結束時間
+10 | AccessFailedCount | INT | NOT NULL | 0 | 連續登入失敗次數
+11 | TwoFactorEnabled | BIT | NOT NULL | 0 | 是否啟用 2FA
+12 | OtpSecret | NVARCHAR(256) | NULL | NULL | 2FA 秘鑰（建議加密儲存）
+13 | AdAccount | NVARCHAR(100) | NULL | NULL | AD/LDAP 帳號
+14 | MustChangePassword | BIT | NOT NULL | 0 | 下次登入是否強制改密碼
+15 | PasswordUpdatedAt | DATETIME | NULL | NULL | 最近變更密碼時間
+16 | LastLoginDate | DATETIME | NULL | NULL | 上次登入時間
+17 | Timezone | NVARCHAR(50) | NULL | NULL | 時區（例：Asia/Taipei）
+18 | Locale | NVARCHAR(10) | NULL | NULL | 語系（例：zh-TW）
+19 | Tags | NVARCHAR(MAX) | NULL | — | JSON 緩衝（Position/IsMIS/Factory…）
+20 | CreatedBy | NVARCHAR(50) | NOT NULL | 'System' | 建立者
+21 | CreatedDate | DATETIME | NOT NULL | GETDATE() | 建立時間
+22 | ModifiedBy | NVARCHAR(50) | NULL | NULL | 修改者
+23 | ModifiedDate | DATETIME | NULL | NULL | 修改時間
+24 | RowVersion | ROWVERSION | NOT NULL | — | 併發控制（timestamp）

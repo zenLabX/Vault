@@ -1,0 +1,57 @@
+# [技術規格書] 權限模組_04_主體角色關聯(AuthRelationPrincipalRole).docx
+
+## Paragraphs
+[技術規格書] 權限模組_04_主體角色關聯(AuthRelationPrincipalRole)
+這張 AuthRelationPrincipalRole 是整個權限模組的「神經接點」，它決定了權限如何流動。你提供的規格中包含的 XOR 約束（UserId 與 GroupCode 二選一） 與 篩選唯一索引 (Filtered Unique Index) 是專業架構師的標配，這能從資料庫底層徹底杜絕資料污染。
+一、 實體定義與用途 (Entity Purpose)
+用途：將「主體（User 或 Group）」指派至特定角色，並支援多角色併行、時間有效性控制與衝突優先序判定。
+架構定位：這是 RBAC 模型中的 「指派關聯 (Assignment)」。它將身分（誰）與職能（能做什麼）正式掛鉤。
+核心邏輯：採「一對一」指派模式，每一筆記錄代表一個主體與一個角色的連結。
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關鍵約束與資料完整性 (Constraints)
+為了達成萬人級系統的穩定性，必須實作以下資料庫約束：
+互斥約束 (XOR Check)：
+確保一筆授權記錄只能歸屬於「使用者」或「群組」其中之一。
+CHECK ( (UserId IS NOT NULL AND GroupCode IS NULL) OR (UserId IS NULL AND GroupCode IS NOT NULL) )。
+防重複指派 (Unique Indexes)：
+針對 User-Role-AppCode 建立篩選唯一索引，防止重複授權導致計算膨脹。
+針對 Group-Role-AppCode 同樣建立唯一約束。
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+查詢效能優化 (萬人規模必備)：
+由人查角色：必須建立 UserId 的非叢集索引。
+由角色查人：必須建立 (RoleCode, IsActive) 的複合索引，用於權限回收或稽核。
+時效過濾：查詢時必須包含 GETDATE() 的範圍檢查，確保過期授權不被載入。
+新增/更新 (C/U) 安全規範：
+快取連鎖失效：一旦此表異動（指派新角色或撤銷角色），必須立即失效受影響使用者的 Redis 權限快取，否則會發生「管理端已改，使用者端無效」的同步問題。
+RowVersion 檢查：更新授權時必須校驗 RowVersion，防止管理員 A 與 B 在調整同一個人的角色時發生衝突。
+刪除 (Delete) 策略：
+物理刪除 vs 軟刪除：建議保留歷史記錄，優先使用 IsActive = 0。若要執行物理刪除，應僅限於「錯誤建立」的資料。
+五、 維運情境範例 (給 NotebookLM 的推理素材)
+Q：為什麼某位使用者被指派了「主管」角色，卻沒有主管權限？
+AI 應引導檢查：IsActive 狀態、ValidFrom/To 是否在有效期內，以及是否有 AppCode 的系統限制。
+Q：系統發生權限衝突（一個角色說 Allow，一個說 Deny），怎麼判斷？
+AI 應引導參考：Priority 欄位數值較大者的授權記錄。
+Q：如何快速收回某個離職人員的所有角色？
+AI 應建議：查詢所有 UserId 等於該人員的記錄，並一次性將 IsActive 設為 0 或 ValidTo 設為當下。
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 主體-角色對應 | 英文表名 | AuthRelationPrincipalRole
+主鍵 PK | PrincipalRoleCode | 外來鍵 FK | AuthPrincipalUser (UserId), AuthPrincipalGroup(GroupCode), AuthRole(RoleCode)
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | PrincipalRoleCode | NVARCHAR(40) | 是 | 實體 PK。關聯記錄唯一識別碼。
+2 | RelationCode | NVARCHAR(50) | 是 | 業務唯一碼。可讀性高的代碼（如：RPR-USER01-ADMIN）。
+3 | UserId | NVARCHAR(40) | 否 | FK。指向使用者；與 GroupCode 互斥。
+4 | GroupCode | NVARCHAR(50) | 否 | FK。指向群組；與 UserId 互斥。
+5 | RoleCode | NVARCHAR(50) | 是 | FK。指向角色主檔。
+6 | AppCode | NVARCHAR(50) | 否 | 作用範圍。指定授權適用的子系統；空值代表全域。
+7 | ValidFrom | DATETIME | 否 | 授權起始時間。
+8 | ValidTo | DATETIME | 否 | 授權失效時間。
+9 | Priority | INT | 是 | 優先序。當擁有多個角色且權限衝突時，值大者優先。
+10 | IsActive | BIT | 是 | 是否啟用（1: 啟用, 0: 停用）。
+11-14 | Audit Fields | — | — | 包含 CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+15 | RowVersion | ROWVERSION | 是 | 併發控制；防止同時修改授權配置。

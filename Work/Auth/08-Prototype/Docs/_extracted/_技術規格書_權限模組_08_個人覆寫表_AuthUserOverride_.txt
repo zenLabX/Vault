@@ -1,0 +1,103 @@
+# [技術規格書] 權限模組_08_個人覆寫表 (AuthUserOverride).docx
+
+## Paragraphs
+[技術規格書] 權限模組_08_個人覆寫表 (AuthUserOverride)
+在萬人系統中，這張表是「救火」用的。當某個特定使用者需要「暫時」開啟某個功能，但又不想動到整個角色的權限時，這張表就派上用場了。它的邏輯權重高於 Role。
+一、 實體定義與用途 (Entity Purpose)
+用途：針對特定使用者在特定資源 × 動作做「加權（Allow）」或「限縮（Deny）」。支援動態條件與有效期控制。
+架構地位：本表是權限系統的「例外處理層 (Exception Layer)」。
+決策優先級 (Resolution Flow)：
+Sanity Check：檢查 IsActive 與 ValidFrom/To。
+User Deny (本表)：若 AuthUserOverride 設為 Effect=0 (DENY)，直接拒絕，不需再查角色。
+User Allow (本表)：若 AuthUserOverride 設為 Effect=1 (ALLOW)，直接允許，覆蓋角色的設定（除非有全域性的系統級 Deny）。
+Role Logic：若本表無命中，才進入 AuthRelationGrant 進行角色權限計算。
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關鍵約束與索引 (Constraints & Indexes)
+注意：本表的主鍵 (PK) 設計為 (UserId, ResourceKey, ActionCode)，這意味著「同一個人、同一個功能，只能有一條覆寫規則」。這是為了避免邏輯衝突。
+1. 資料完整性 (Constraints)
+日期邏輯：CHECK (ValidFrom IS NULL OR ValidTo IS NULL OR ValidFrom <= ValidTo)。
+效果值：CHECK (Effect IN (0,1))。
+2. 效能索引策略 (Performance Indexes)
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+1. 「反樣式」警告 (Anti-Pattern Warning)
+不要當成常態使用：
+❌ Bad Practice：因為懶得開新 Role，就直接在 AuthUserOverride 加 50 筆資料給 50 個人。
+✅ Good Practice：僅用於「臨時性」、「單一性」的需求。若超過 5 人需要相同權限，請建立新的 AuthRole。
+定期清理機制：
+建議設定排程 Job，每月掃描 ValidTo < GETDATE() 的過期資料並標記或移入歷史表，避免此表無限膨脹影響登入效能。
+2. 寫入檢核
+原因必填：建議在 UI 層強制要求填寫 Reason 欄位。三個月後你絕對會忘記為什麼給這個人開了這個特權。
+Conflict Check：新增 Override 時，最好提示管理員該使用者目前的 Role 權限狀態（例如：「該使用者原本的角色已有 Allow，您確定要再加一個 Allow 嗎？」）。
+五、 維運情境範例 (Troubleshooting)
+Q：為什麼我把角色的權限關了，這個人還是能用？
+AI 推理：請檢查 AuthUserOverride 表，該人員是否有 Effect = 1 且 ValidTo 尚未過期的覆寫紀錄。這是最常見的「幽靈權限」來源。
+Q：如何緊急封鎖某個有惡意行為的帳號，但不想刪除他？
+操作：在 AuthUserOverride 新增一筆全域 Deny（如果系統支援 ResourceKey = '*'）或針對關鍵功能的 Effect = 0 紀錄。
+Q：稽核員質疑為什麼有人的權限與角色表不符？
+回應：出示 AuthUserOverride 的 Reason 欄位與 CreatedBy 欄位，證明這是經過核准的特殊授權。
+六、 附錄：標準化 SQL Script (Standardized Schema)
+修正說明：將原始 INT 欄位修正為 NVARCHAR 以符合系統整體設計，並確保 FK 正確指向 Business Key。
+SQL
+CREATE TABLE dbo.AuthUserOverride (
+UserId        NVARCHAR(40)  NOT NULL, -- FK to AuthPrincipalUser
+ResourceKey   NVARCHAR(160) NOT NULL, -- FK to AuthResource
+ActionCode    NVARCHAR(50)  NOT NULL, -- FK to AuthAction
+Effect        BIT           NOT NULL CONSTRAINT DF_AUO_Effect DEFAULT(1),
+ConditionJson NVARCHAR(MAX) NULL,
+ValidFrom     DATETIME      NULL,
+ValidTo       DATETIME      NULL,
+IsActive      BIT           NOT NULL CONSTRAINT DF_AUO_IsActive DEFAULT(1),
+Reason        NVARCHAR(200) NULL,
+CreatedBy     NVARCHAR(50)  NOT NULL CONSTRAINT DF_AUO_CreatedBy DEFAULT('System'),
+CreatedDate   DATETIME      NOT NULL CONSTRAINT DF_AUO_CreatedDate DEFAULT(GETDATE()),
+ModifiedBy    NVARCHAR(50)  NULL,
+ModifiedDate  DATETIME      NULL,
+RowVersion    ROWVERSION    NOT NULL,
+-- 複合主鍵：確保一人對一功能只有一個覆寫設定
+CONSTRAINT PK_AuthUserOverride PRIMARY KEY (UserId, ResourceKey, ActionCode),
+-- 外鍵約束
+CONSTRAINT FK_AUO_User     FOREIGN KEY (UserId)      REFERENCES dbo.AuthPrincipalUser(UserId),
+CONSTRAINT FK_AUO_Resource FOREIGN KEY (ResourceKey) REFERENCES dbo.AuthResource(ResourceKey),
+CONSTRAINT FK_AUO_Action   FOREIGN KEY (ActionCode)  REFERENCES dbo.AuthAction(ActionCode),
+-- 邏輯約束
+CONSTRAINT CK_AUO_DateRange CHECK (ValidFrom IS NULL OR ValidTo IS NULL OR ValidFrom <= ValidTo),
+CONSTRAINT CK_AUO_Effect    CHECK (Effect IN (0,1))
+);
+-- 1) 快速短路 Deny (High Priority Check)
+CREATE NONCLUSTERED INDEX IX_AUO_FastDeny
+ON dbo.AuthUserOverride(UserId, ResourceKey, ActionCode)
+WHERE Effect = 0 AND IsActive = 1;
+-- 2) 一般覆寫查詢 (Covering Index)
+CREATE NONCLUSTERED INDEX IX_AUO_Validation
+ON dbo.AuthUserOverride(UserId, ResourceKey, ActionCode)
+INCLUDE (Effect, ConditionJson, ValidFrom, ValidTo, IsActive);
+-- 3) 過期資料清理索引
+CREATE NONCLUSTERED INDEX IX_AUO_Maintenance
+ON dbo.AuthUserOverride(ValidTo)
+INCLUDE (UserId, IsActive);
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 個人覆寫 | 英文表名 | AuthUserOverride
+主鍵 PK | (UserId, ResourceId, ActionId) | 外來鍵 FK | AuthPrincipalUser(UserId), AuthResource(ResourceKey), AuthAction(ActionCode)
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | UserId | NVARCHAR(40) | 是 | PK / FK。使用者 ID。（PK-1）
+2 | ResourceKey | NVARCHAR(160) | 是 | PK / FK。資源 Key。（PK-2）
+3 | ActionCode | NVARCHAR(50) | 是 | PK / FK。動作代碼。（PK-3）
+4 | Effect | BIT | 是 | 覆寫效果。1: ALLOW (特權放行), 0: DENY (個人黑名單)。
+5 | ConditionJson | NVARCHAR(MAX) | 否 | ABAC 條件。例：限制只能看特定廠區的資料。
+6 | ValidFrom | DATETIME | 否 | 生效時間。
+7 | ValidTo | DATETIME | 否 | 失效時間。
+8 | IsActive | BIT | 是 | 是否啟用。0 代表此覆寫規則暫時無效。
+9 | Reason | NVARCHAR(200) | 否 | 覆寫原因。必填建議。例如：「CEO 特批」、「離職前風險控管」。
+10-13 | Audit Fields | — | — | CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+14 | RowVersion | ROWVERSION | 是 | 併發控制。
+
+### Table 3
+索引名稱 | 欄位組合 | 用途與情境
+IX_AUO_FastCheck | (UserId, ResourceKey, ActionCode) Include: Effect, ConditionJson, IsActive, ValidTo | 權限判定 (Hot Path)： 系統在查詢 Role 權限前，必須先查此表。此索引包含所有決策所需欄位，實現 Index-Only Scan。
+IX_AUO_QuickDeny | (UserId, ResourceKey, ActionCode) Filter: WHERE Effect = 0 AND IsActive = 1 | 快速阻擋 (Fast Fail)： 專門用於「黑名單」檢查。若命中此索引，系統可立即回傳 False，節省後續查詢資源。

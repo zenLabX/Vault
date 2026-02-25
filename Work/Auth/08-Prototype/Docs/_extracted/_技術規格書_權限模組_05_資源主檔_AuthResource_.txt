@@ -1,0 +1,65 @@
+# [技術規格書] 權限模組_05_資源主檔 (AuthResource).docx
+
+## Paragraphs
+[技術規格書] 權限模組_05_資源主檔 (AuthResource)
+一、 實體定義與用途 (Entity Purpose)
+架構地位：本表是權限系統的「名詞」，定義了系統中所有受控物件。
+用途：集中管理跨系統的所有資源，包含選單 (Menu)、頁面 (Page)、API 端點 (Endpoint)、以及細顆粒度的畫面控制項 (Button/Field)。
+架構定位：
+樹狀結構：透過 ParentResourceKey 與 Lineage (物化路徑) 實現階層管理，支援「授權父節點，子節點自動繼承」的高效邏輯。
+ABAC 屬性源：Attributes 欄位作為資源的特徵倉儲（如：資料敏感度、歸屬部門），供後續動態權限計算使用。
+核心邏輯：採 單一資料表策略 (Single Table Strategy)。無論是後端 API 還是前端按鈕，皆視為 Resource，僅以 ResourceType 區分。
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關鍵約束與索引 (Constraints & Indexes)
+為了確保千萬級存取的效能與資料一致性，必須實作以下資料庫約束：
+1. 唯一性約束 (Uniqueness)
+約束名稱：UX_AuthResource_App_ResCode
+欄位：(AppCode, ResourceCode)
+目的：確保在同一個子系統內，資源代碼是唯一的，防止開發人員重複定義。
+2. 效能索引策略 (Performance Indexes)
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+1. 新增/更新 (C/U) 安全規範
+防禦循環參照 (Circular Reference Check)：在更新 ParentResourceKey 時，系統必須檢查目標父節點的 Lineage 是否包含當前節點 Key，避免產生無窮迴圈 (A -> B -> A)。
+路徑維護成本 (Lineage Maintenance)：當移動節點（修改 ParentResourceKey）時，系統必須遞迴更新該節點及其所有「子孫節點」的 Lineage。此操作必須封裝在 Transaction 中。
+2. 刪除 (Delete) 策略
+嚴禁直接刪除非葉節點：若刪除包含子選單的模組，會導致下層資源變為「孤兒」。欲刪除前必須確認 IsLeaf = 1。
+軟刪除優先：建議使用 IsActive = 0。若執行物理刪除，須連帶清除相關的授權設定 (AuthRelationGrant)。
+五、 維運情境範例 (Troubleshooting)
+Q：開發人員新增 API，但呼叫時回傳 403 Forbidden？
+檢查點：確認該 API 的 Endpoint 與 HttpMethod 是否已正確寫入 AuthResource？若資源不存在，權限系統預設會執行 Deny All。
+Q：如何將「訂單管理模組」下的所有功能暫時停用？
+建議：查詢該模組的 Lineage (如 /PMS/ORDER/)，執行批次更新：UPDATE AuthResource SET IsActive = 0 WHERE Lineage LIKE '/PMS/ORDER/%'。
+Q：選單順序錯亂怎麼辦？
+建議：調整 SortOrder 數值並清除前端或 Redis 中的 Menu Cache 才會生效。
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 資源主檔 | 英文表名 | AuthResource
+主鍵 PK | ResourceKey | 外來鍵 FK | AuthResource(ResourceKey)（ParentResourceKey）
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | ResourceKey | NVARCHAR(160) | 是 (PK) | 全域唯一鍵值。建議格式：{AppCode}:{ResourceCode} (例：PMS:ORDER_FORM)。
+2 | AppCode | NVARCHAR(50) | 是 | 系統歸屬。區分不同子系統 (如 PMS, APS)；GLOBAL 代表跨系統共用。
+3 | ResourceCode | NVARCHAR(100) | 是 | 業務代碼。同一 AppCode 下必須唯一。程式碼以此字串進行權限綁定。
+4 | ResourceName | NVARCHAR(200) | 是 | 顯示名稱。選單或按鈕上的文字 (可支援 i18n Key)。
+5 | ResourceType | NVARCHAR(30) | 是 | 資源類型：SYSTEM, MODULE, MENU, PAGE, API, BUTTON, FIELD。
+6 | ParentResourceKey | NVARCHAR(160) | 否 | 樹狀關聯 (Self-FK)。指向父節點的 ResourceKey；根節點為 NULL。
+7 | Path | NVARCHAR(800) | 否 | 物化路徑 (Materialized Path)。範例：/ROOT/PMS/ORDER/BTN_SAVE/。
+8 | SortOrder | INT | 是 | 排序權重。數值小者在前，用於選單渲染順序。
+9 | Endpoint | NVARCHAR(400) | 否 | API 路徑 / 前端路由。用於 Middleware 攔截器查表。
+10 | Method | NVARCHAR(10) | 否 | HTTP 動詞。僅當 ResourceType = API 時使用 (GET, POST, PUT, DELETE)。
+11 | MetaJson | NVARCHAR(MAX) | 否 | ABAC 核心屬性 (JSON)。例：{"Sensitivity": "High", "DeptOwner": "Sales"}。----MetaJson其實就等同於Attribute的意思。
+12 | IsLeaf | BIT | 是 | 是否為葉節點。優化前端渲染邏輯 (True 代表不再有子項目)。
+13 | IsActive | BIT | 是 | 是否啟用。0 代表停用 (軟刪除或是功能下架)。
+14 | Tags | NVARCHAR(200) | 否 | 標籤。用於快速分類搜尋 (如：#Beta, #Legacy)。
+15-18 | Audit Fields | — | — | 包含 CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+19 | RowVersion | ROWVERSION | 是 | 併發控制。防止多人同時修改資源結構。
+
+### Table 3
+索引名稱 | 欄位組合 | 用途與情境
+IX_AuthResource_Tree | (ParentResourceKey, SortOrder) | 選單渲染：快速取出某一層級的所有子項目並排序。
+IX_AuthResource_Lineage | (Lineage) | 子樹查詢：支援 LIKE '/ROOT/PMS/%' 語法，一次取出某模組下的所有資源。
+IX_AuthResource_Route | (Endpoint, HttpMethod) | API 攔截器：Request 進入時快速反查該 URL 對應的資源。

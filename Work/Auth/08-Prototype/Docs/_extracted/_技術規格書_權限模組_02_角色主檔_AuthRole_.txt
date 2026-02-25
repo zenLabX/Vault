@@ -1,0 +1,51 @@
+# [技術規格書] 權限模組_02_角色主檔(AuthRole).docx
+
+## Paragraphs
+[技術規格書] 權限模組_02_角色主檔(AuthRole)
+一、 實體定義與用途 (Entity Purpose)
+用途：本表為系統角色的定義核心。透過 AuthRelationPrincipalRole 將角色指派給使用者或群組，並由 AuthRelationGrant 進行權限授權（Resource + Action）。
+架構定位：屬於 RBAC (Role-Based Access Control) 模型中的 「R (Role)」。所有存取控制邏輯皆以此表定義的角色代碼 (RoleCode) 為核心。
+關聯：
+AuthRelationPrincipalRole.RoleCode → AuthRole.RoleCode
+AuthRelationGrant.RoleCode → AuthRole.RoleCode
+二、 資料表規格 (Schema)
+欄位清單：
+三、 關聯地圖 (Relationship Map)
+角色指派：AuthRole.RoleCode ← AuthRelationPrincipalRole.RoleCode。
+權限授權：AuthRole.RoleCode ← AuthRelationGrant.RoleCode。
+外來鍵約束：本表受 AuthRelationPrincipalRole 與 AuthRelationGrant 參照。
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+刪除 (Delete) 禁令：
+強制檢查：在刪除 AuthRole 前，系統必須檢查 AuthRelationPrincipalRole 是否仍有使用者關聯。
+萬人系統風險：物理刪除一個擁有萬名使用者的角色，會導致資料庫鎖表 (Table Lock) 並引發 API 大規模逾時。建議優先使用 IsActive = 0。
+更新 (Update) 連鎖反應：
+快取失效：當角色的 IsActive 或權限範圍變動時，必須立即失效 (Invalidate) Redis 中受影響使用者的 Permission Buffer。
+IsAdmin 變更：此欄位異動屬於高等級安全事件，建議在 Tags 中記錄異動原因，並寫入獨立的安全日誌。
+併發處理：
+更新角色時必須檢查 RowVersion。若 A 管理員正在修改 RoleName，B 管理員同時修改 Priority，系統必須擋下後者，確保配置一致性。
+五、 維運情境範例 (給 NotebookLM 的推理素材)
+Q：使用者反映他有 ADMIN 角色，但還是不能進某些頁面？
+AI 應檢查：IsActive 是否為啟用、IsAdmin 位元是否被意外關閉。
+Q：如何暫時凍結某個職能的所有存取權？
+AI 應建議：將該職能對應的 AuthRole.IsActive 設為 0。
+Q：當使用者同時擁有「經理」與「臨時專員」角色，權限衝突怎麼辦？
+AI 應參考：Priority 欄位進行邏輯判定。
+
+## Tables
+### Table 1
+項目 | 內容 | 項目 | 內容
+中文表名 | 角色主檔 | 英文表名 | AuthRole
+主鍵 PK | RoleCode | 外來鍵 FK | AuthRelationPrincipalRole.RoleCode AuthRelationGrant.RoleCode
+
+### Table 2
+編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯
+1 | RoleId | NVARCHAR(50) | 是 | 實體 PK。角色唯一流水號。
+2 | RoleCode | NVARCHAR(50) | 是 | 邏輯 PK / UNIQUE。業務關聯代碼（如：ADMIN、PLANNER）。為程式碼判斷之依據。
+3 | RoleName | NVARCHAR(100) | 是 | 角色名稱，用於 UI 介面顯示。
+4 | RoleDesc | NVARCHAR(200) | 否 | 角色詳細描述。
+5 | IsAdmin | BIT | 是 | 最高權限標記。若為 1，通常在程式碼中會繞過細節權限檢查，具備全系統通行權。
+6 | IsActive | BIT | 是 | 是否啟用。0 為停用，停用後該角色下所有使用者將失去相關授權。
+7 | Priority | INT | 是 | 衝突解析優先序。當使用者擁有多個角色且權限衝突時，參考此數值。
+8 | Tags | NVARCHAR(MAX) | 否 | JSON 擴充標籤。例：{"isAdmin":true, "dept":"HR"}。
+9-12 | Audit Fields | — | — | 包含 CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。
+13 | RowVersion | ROWVERSION | 是 | 併發控制 (Optimistic Locking)。防止多個管理員同時修改同一角色配置。
