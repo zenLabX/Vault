@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PermViewer – 權限管理查詢 Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>PermViewer（Prototype）</h1>
+        <p class="muted">權限管理查詢 / Wide-Source（Action → 來源簡碼）</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">UserId</span>
+              <input class="field__input" name="userId" id="qUserId" placeholder="例如: U001" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Module</span>
+              <input class="field__input" name="module" id="qModule" placeholder="模組（模糊比對）" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Form</span>
+              <input class="field__input" name="form" id="qForm" placeholder="表單（模糊比對）" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Action</span>
+              <select class="field__input" name="action" id="qAction">
+                <option value="">（全部）</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">AtUtc</span>
+              <input class="field__input" name="atUtc" id="qAtUtc" type="datetime-local" step="1" />
+              <span class="field__hint">以 UTC 時間點評估 ValidFrom/ValidTo</span>
+            </label>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+          </div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="Permission viewer result">
+          <table class="table" id="resultTable">
+            <thead id="resultThead"></thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="Edit override">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">編輯覆寫權限</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <div class="kv" id="drawerKv"></div>
+
+            <div class="section">
+              <div class="section__title">Override（個人覆寫）</div>
+              <div class="muted section__desc">兩個都不勾選代表「不設定 override」（相當於 AuthUserOverride 沒有設定）。</div>
+
+              <div class="checks" id="flagChecks">
+                <label class="check">
+                  <input type="checkbox" id="chkAllow" />
+                  <span>Allow</span>
+                </label>
+                <label class="check">
+                  <input type="checkbox" id="chkDeny" />
+                  <span>Deny</span>
+                </label>
+              </div>
+              <div class="muted" id="flagState"></div>
+            </div>
+
+            <div class="section">
+              <div class="section__title">Remark / Reason</div>
+              <textarea class="textarea" id="txtRemark" rows="4" placeholder="例如：稽核暫時封鎖 / 特批放行"></textarea>
+            </div>
+          </div>
+
+          <div class="drawer__footer">
+            <button class="btn btn--ghost" id="btnDrawerCancel">取消</button>
+            <button class="btn" id="btnDrawerSave">儲存</button>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

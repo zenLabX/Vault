@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AuthRole – Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>AuthRole（Prototype）</h1>
+        <p class="muted">角色主檔 / Search(Index) + Detail + Add/Edit + Delete（soft + hard）</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">RoleCode</span>
+              <input class="field__input" id="qRoleCode" name="roleCode" placeholder="例如：ADMIN（模糊比對）" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">RoleName</span>
+              <input class="field__input" id="qRoleName" name="roleName" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsAdmin</span>
+              <select class="field__input" id="qIsAdmin" name="isAdmin">
+                <option value="">（全部）</option>
+                <option value="1">Admin</option>
+                <option value="0">Non-Admin</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsActive</span>
+              <select class="field__input" id="qIsActive" name="isActive">
+                <option value="">（全部）</option>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Tags (contains)</span>
+              <input class="field__input" id="qTags" name="tags" placeholder='例如：{"dept":"HR"}' />
+            </label>
+          </div>
+
+          <div class="form__row form__row--2">
+            <label class="field">
+              <span class="field__label">Priority (min)</span>
+              <input class="field__input" id="qPriorityMin" name="priorityMin" type="number" step="1" placeholder="例如：0" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Priority (max)</span>
+              <input class="field__input" id="qPriorityMax" name="priorityMax" type="number" step="1" placeholder="例如：100" />
+            </label>
+
+            <div class="field" style="grid-column: span 3;">
+              <span class="field__label">Notes</span>
+              <div class="field__hint">Delete（soft）會把 IsActive 設為 0；Hard delete 會被 guardrail 限制（若仍被指派/仍有授權）。</div>
+            </div>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+            <button class="btn btn--ghost" type="button" id="btnAddNew">Add New</button>
+            <div class="spacer"></div>
+            <div class="muted" id="resultMeta"></div>
+          </div>
+
+          <div class="notice" id="notice" aria-live="polite" hidden></div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="AuthRole search result">
+          <table class="table" id="resultTable">
+            <thead>
+              <tr>
+                <th>RoleId</th>
+                <th>RoleCode</th>
+                <th>RoleName</th>
+                <th>IsAdmin</th>
+                <th>IsActive</th>
+                <th>Priority</th>
+                <th>Tags</th>
+                <th>ModifiedDate</th>
+                <th style="min-width: 210px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="AuthRole detail/edit">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">AuthRole</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <form id="editForm" class="editForm" autocomplete="off">
+              <div class="section">
+                <div class="section__title">Identity</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">RoleId (PK)</span>
+                    <input class="field__input mono" id="fRoleId" name="roleId" disabled />
+                    <span class="field__hint">實體 PK；prototype 自動生成</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">RoleCode (UNIQUE)</span>
+                    <input class="field__input mono" id="fRoleCode" name="roleCode" placeholder="例如：ADMIN" />
+                    <span class="field__hint">程式碼判斷依據；被指派/授權引用後不建議變更</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">RoleName</span>
+                    <input class="field__input" id="fRoleName" name="roleName" />
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">Priority</span>
+                    <input class="field__input" id="fPriority" name="priority" type="number" step="1" />
+                    <span class="field__hint">衝突解析：Deny 仍最高；若需挑選 Allow，才以 Priority 輔助</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Flags</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">IsAdmin</span>
+                    <select class="field__input" id="fIsAdmin" name="isAdmin">
+                      <option value="1">1 (Admin)</option>
+                      <option value="0">0 (Non-Admin)</option>
+                    </select>
+                    <span class="field__hint" id="adminHint">IsAdmin 異動屬高風險事件；正式系統應記錄原因與安全日誌</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">IsActive</span>
+                    <select class="field__input" id="fIsActive" name="isActive">
+                      <option value="1">1 (Active)</option>
+                      <option value="0">0 (Inactive)</option>
+                    </select>
+                    <span class="field__hint">停用後，該角色下所有使用者將失去相關授權（需清權限快取）</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Description</div>
+                <textarea class="textarea" id="fRoleDesc" name="roleDesc" rows="3" placeholder="角色詳細描述"></textarea>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Tags (JSON)</div>
+                <textarea class="textarea" id="fTags" name="tags" rows="5" placeholder='例如：{"dept":"HR","note":"temporary"}'></textarea>
+                <div class="muted" id="tagsState"></div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">References</div>
+                <div class="kv">
+                  <div class="kv__row"><span class="muted">Assigned principals</span><span id="refAssignments" class="mono"></span></div>
+                  <div class="kv__row"><span class="muted">Grants</span><span id="refGrants" class="mono"></span></div>
+                </div>
+                <div class="muted section__desc">Hard delete 需先確保沒有任何指派/授權參照，避免資料污染與大規模鎖表風險。</div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Audit</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">CreatedBy</span>
+                    <input class="field__input" id="fCreatedBy" name="createdBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">CreatedDate</span>
+                    <input class="field__input" id="fCreatedDate" name="createdDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedBy</span>
+                    <input class="field__input" id="fModifiedBy" name="modifiedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedDate</span>
+                    <input class="field__input" id="fModifiedDate" name="modifiedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RowVersion</span>
+                    <input class="field__input" id="fRowVersion" name="rowVersion" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="notice notice--error" id="formError" hidden></div>
+            </form>
+          </div>
+
+          <div class="drawer__footer" id="drawerFooter"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

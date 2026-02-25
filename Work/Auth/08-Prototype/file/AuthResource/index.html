@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AuthResource – Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>AuthResource（Prototype）</h1>
+        <p class="muted">資源主檔 / Search(Index) + Detail + Add/Edit + Delete（soft）</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">AppCode</span>
+              <input class="field__input" id="qAppCode" name="appCode" disabled />
+              <span class="field__hint">依需求：系統預設帶入且不可修改</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">ResourceCode</span>
+              <input class="field__input" id="qResourceCode" name="resourceCode" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">ResourceName</span>
+              <input class="field__input" id="qResourceName" name="resourceName" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">ResourceType</span>
+              <select class="field__input" id="qResourceType" name="resourceType">
+                <option value="">（全部）</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsActive</span>
+              <select class="field__input" id="qIsActive" name="isActive">
+                <option value="">（全部）</option>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form__row form__row--2">
+            <label class="field">
+              <span class="field__label">Path (prefix)</span>
+              <input class="field__input" id="qPath" name="path" placeholder="例如：/PMS/ORDER/" />
+              <span class="field__hint">前綴比對（startsWith）</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Endpoint (contains)</span>
+              <input class="field__input" id="qEndpoint" name="endpoint" placeholder="例如：/api/orders" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Method</span>
+              <select class="field__input" id="qMethod" name="method">
+                <option value="">（全部）</option>
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Tags (contains)</span>
+              <input class="field__input" id="qTags" name="tags" placeholder="#Beta / Legacy" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">ParentResourceKey</span>
+              <input class="field__input" id="qParentResourceKey" name="parentResourceKey" placeholder="精確或模糊比對" />
+            </label>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+            <button class="btn btn--ghost" type="button" id="btnAddNew">Add New</button>
+            <div class="spacer"></div>
+            <div class="muted" id="resultMeta"></div>
+          </div>
+
+          <div class="notice" id="notice" aria-live="polite" hidden></div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="AuthResource search result">
+          <table class="table" id="resultTable">
+            <thead>
+              <tr>
+                <th>ResourceKey</th>
+                <th>ResourceCode</th>
+                <th>ResourceName</th>
+                <th>ResourceType</th>
+                <th>ParentResourceKey</th>
+                <th>Path</th>
+                <th>SortOrder</th>
+                <th>Endpoint</th>
+                <th>Method</th>
+                <th>IsLeaf</th>
+                <th>IsActive</th>
+                <th>Tags</th>
+                <th>ModifiedDate</th>
+                <th style="min-width: 210px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="AuthResource detail/edit">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">AuthResource</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <form id="editForm" class="editForm" autocomplete="off">
+              <div class="section">
+                <div class="section__title">Identity</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">ResourceKey</span>
+                    <input class="field__input" id="fResourceKey" name="resourceKey" disabled />
+                    <span class="field__hint">{AppCode}:{ResourceCode}（自動組合）</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">AppCode</span>
+                    <input class="field__input" id="fAppCode" name="appCode" disabled />
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">ResourceCode</span>
+                    <input class="field__input" id="fResourceCode" name="resourceCode" />
+                    <span class="field__hint" id="hintResourceCode">同 AppCode 下必須唯一；上線後不建議變更</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">ResourceName</span>
+                    <input class="field__input" id="fResourceName" name="resourceName" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Type & Tree</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">ResourceType</span>
+                    <select class="field__input" id="fResourceType" name="resourceType"></select>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">ParentResourceKey</span>
+                    <select class="field__input" id="fParentResourceKey" name="parentResourceKey"></select>
+                    <span class="field__hint">修改 Parent 需避免循環，且會遞迴更新子孫 Path</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">Path</span>
+                    <input class="field__input" id="fPath" name="path" disabled />
+                    <span class="field__hint">由系統維護（Materialized Path）</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">SortOrder</span>
+                    <input class="field__input" id="fSortOrder" name="sortOrder" type="number" step="1" />
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">IsLeaf</span>
+                    <input class="field__input" id="fIsLeaf" name="isLeaf" disabled />
+                    <span class="field__hint">由子節點推導；非葉節點不可刪除</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">IsActive</span>
+                    <select class="field__input" id="fIsActive" name="isActive">
+                      <option value="1">Active</option>
+                      <option value="0">Inactive</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Routing (API only)</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">Endpoint</span>
+                    <input class="field__input" id="fEndpoint" name="endpoint" placeholder="/api/... 或前端 route" />
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">Method</span>
+                    <select class="field__input" id="fMethod" name="method">
+                      <option value="">（N/A）</option>
+                      <option value="GET">GET</option>
+                      <option value="POST">POST</option>
+                      <option value="PUT">PUT</option>
+                      <option value="DELETE">DELETE</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="muted section__desc">當 ResourceType=API 時，Endpoint/Method 用於 Middleware 攔截器查表；資源不存在會 Default Deny。</div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">MetaJson (ABAC Attributes)</div>
+                <textarea class="textarea" id="fMetaJson" name="metaJson" rows="5" placeholder='例如：{"Sensitivity":"High","DeptOwner":"Sales"}'></textarea>
+                <div class="muted" id="metaJsonState"></div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Tags</div>
+                <input class="field__input" id="fTags" name="tags" placeholder="#Beta, #Legacy" />
+              </div>
+
+              <div class="section">
+                <div class="section__title">Audit</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">CreatedBy</span>
+                    <input class="field__input" id="fCreatedBy" name="createdBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">CreatedDate</span>
+                    <input class="field__input" id="fCreatedDate" name="createdDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedBy</span>
+                    <input class="field__input" id="fModifiedBy" name="modifiedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedDate</span>
+                    <input class="field__input" id="fModifiedDate" name="modifiedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RowVersion</span>
+                    <input class="field__input" id="fRowVersion" name="rowVersion" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="notice notice--error" id="formError" hidden></div>
+            </form>
+          </div>
+
+          <div class="drawer__footer" id="drawerFooter">
+            <button class="btn btn--ghost" id="btnDrawerCancel" type="button">取消</button>
+            <button class="btn" id="btnDrawerSave" type="button">儲存</button>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
