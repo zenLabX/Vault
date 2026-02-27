@@ -1,0 +1,172 @@
+# [技術規格書] 權限模組_11_資源動作目錄表 (AuthRelationResourceAction)
+
+## Paragraphs
+技術規格書] 權限模組_11_資源動作目錄表 (AuthRelationResourceAction)
+這張 AuthRelationResourceAction 表是權限架構中，連結「名詞（Resource）」與「動詞（Action）」的**功能目錄層**。它的職責是定義「每個資源實際可執行哪些動作」，從數學上的全集（Action × Resource）收斂為業務上有意義的子集。
+沒有這張表的話，Grant 設定畫面會出現所有 Action 與所有 Resource 的笛卡爾積——大部分組合毫無意義（例如對一個按鈕做 APPROVE）。有了這張表，UI 只列出有意義的功能項目，管理員只需決定 Allow/Deny。
+
+設計邏輯說明
+複合主鍵設計：採用 (ResourceKey, ActionCode) 作為 PK。這能確保同一個資源對同一個動作只存在一筆記錄，天生防重。
+關聯方式：
+ResourceKey 關聯至 AuthResource.ResourceKey。
+ActionCode 關聯至 AuthAction.ActionCode。
+架構層級定位：本表位於四層收斂架構的第二層。
+
+四層收斂架構：
+第一層（理論全集）：AuthAction × AuthResource = 所有數學上可能的組合。
+第二層（功能目錄）：AuthRelationResourceAction = 只保留「有意義的」組合。
+第三層（授權矩陣）：AuthRelationGrant = Role × (功能目錄中的合法組合)。
+第四層（個人覆寫）：AuthUserOverride = 針對個人的特例。
+
+一、 實體定義與用途 (Entity Purpose)
+用途：維護「每個資源可執行哪些動作」的目錄清單。透過此目錄，Grant 設定畫面只顯示當前資源的合法動作，避免管理員面對無意義的組合矩陣。
+架構地位：本表是 AuthRelationGrant 的上游約束——Grant 只能針對目錄中存在的 (ResourceKey, ActionCode) 組合進行授權指派。
+資料初始化邏輯：
+使用 CROSS JOIN 將「通用動作」（Category = '通用'）與「Form 類型資源」（ResourceType = 'Form'）做笛卡爾積產生種子資料。
+使用 NOT EXISTS 防止重複插入。
+後續由 DataAdmin 進行人工維護（新增特殊動作、移除不適用動作、維護非 Form 類型資源）。
+
+二、 資料表規格 (Schema)
+欄位清單：
+
+| 編號 | 欄位名稱 | 資料型別 | 必填 | 描述與業務邏輯 |
+|---|---|---|---|---|
+| 1 | ResourceKey | NVARCHAR(160) | 是 (PK) | 資源唯一識別鍵。格式 `{AppCode}:{ResourceCode}`。（FK → AuthResource.ResourceKey） |
+| 2 | ActionCode | NVARCHAR(50) | 是 (PK) | 動作代碼。（FK → AuthAction.ActionCode） |
+| 3 | IsEnabled | BIT | 是 | 是否啟用。1: 啟用, 0: 停用。用於快速開關某資源的某動作。 |
+| 4 | SortOrder | INT | 是 | UI 排列順序。後台管理介面中，動作按此欄位排序顯示。 |
+| 5 | Remark | NVARCHAR(200) | 否 | 維護備註。記錄此組合存在的原因或特殊說明。 |
+| 6-9 | Audit Fields | — | — | 包含 CreatedBy, CreatedDate, ModifiedBy, ModifiedDate。 |
+| 10 | RowVersion | ROWVERSION | 是 | 併發控制。 |
+
+三、 關鍵約束與索引 (Constraints & Indexes)
+設計規範：本表採用 (ResourceKey, ActionCode) 作為複合主鍵，天生防止了「同一個資源同一個動作出現兩次」的重複資料問題。
+
+約束：
+PK_AuthRelationResourceAction — PRIMARY KEY (ResourceKey, ActionCode)。
+FK_ARRA_Resource — FOREIGN KEY (ResourceKey) REFERENCES AuthResource(ResourceKey)。
+FK_ARRA_Action — FOREIGN KEY (ActionCode) REFERENCES AuthAction(ActionCode)。
+
+1. 效能索引策略 (Performance Indexes)
+
+| 索引名稱 | 核心欄位組合 | 用途與情境 |
+|---|---|---|
+| PK_AuthRelationResourceAction | (ResourceKey, ActionCode) | 主體查詢：Grant 設定畫面載入某資源的可用動作清單。 |
+| IX_ARRA_ActionLookup | (ActionCode, IsEnabled) INCLUDE (ResourceKey) | 反查：停用某動作時，快速找出所有受影響的資源。 |
+| IX_ARRA_ResourceUI | (ResourceKey, IsEnabled, SortOrder) INCLUDE (ActionCode) | UI 渲染：權限管理介面依資源列出可用動作並排序。 |
+
+四、 資深架構師的防崩潰 CRUD 守則 (Safety Guardrails)
+1. 種子資料初始化
+資料初始化策略：
+首次部署或新增 Form 類型資源時，使用以下邏輯自動產生目錄記錄：
+  - SELECT 通用 Action（Category = '通用'）CROSS JOIN Form Resource（ResourceType = 'Form'）
+  - 以 NOT EXISTS 排除已存在的組合
+  - 後續由 DataAdmin 人工調整（移除不適用、新增特殊動作）
+
+2. 與 Grant 表的一致性保護
+建議在 AuthRelationGrant 上新增複合 FK：
+```sql
+ALTER TABLE AuthRelationGrant
+ADD CONSTRAINT FK_Grant_ResourceAction
+    FOREIGN KEY (ResourceKey, ActionCode)
+    REFERENCES AuthRelationResourceAction (ResourceKey, ActionCode);
+```
+此 FK 確保 Grant 只能針對目錄中存在的合法組合進行授權，從架構層面杜絕「授權一個資源沒有的動作」。
+
+3. 停用與刪除策略
+優先使用 IsEnabled = 0 停用：Grant 表可能仍參照此組合，物理刪除會觸發 FK violation。
+停用後 UI 不顯示此動作，但既有 Grant 不受影響（保持歷史紀錄完整性）。
+
+4. 快取一致性 (Cache Invalidation)
+目錄變動 = UI 重新渲染：
+AuthRelationResourceAction 的增刪改會影響權限設定畫面的動作選項清單。
+建議對「功能目錄」做應用層快取（TTL 30 分鐘或手動 Purge）。
+
+五、 維運情境範例 (Troubleshooting)
+Q：新增一個 Form 資源後，權限設定畫面沒有動作可勾選？
+操作：執行種子初始化腳本，將通用動作灌入該資源的功能目錄。
+
+Q：想對某個 Form 加上 APPROVE 簽核動作？
+操作：手動 INSERT 一筆 (ResourceKey, 'APPROVE') 到本表。
+
+Q：想暫停某資源的 EXPORT 功能？
+操作：UPDATE SET IsEnabled = 0 WHERE ResourceKey = ? AND ActionCode = 'EXPORT'。
+
+Q：停用某動作（如 VOID）後，怎麼知道哪些資源受影響？
+查詢：SELECT ResourceKey FROM AuthRelationResourceAction WHERE ActionCode = 'VOID' AND IsEnabled = 1。
+
+六、 附錄：標準化 SQL Script
+```sql
+CREATE TABLE [dbo].[AuthRelationResourceAction]
+(
+    -- PK
+    ResourceKey     NVARCHAR(160)   NOT NULL,
+    ActionCode      NVARCHAR(50)    NOT NULL,
+
+    -- 業務欄位
+    IsEnabled       BIT             NOT NULL  DEFAULT 1,
+    SortOrder       INT             NOT NULL  DEFAULT 0,
+    Remark          NVARCHAR(200)   NULL,
+
+    -- 稽核欄位
+    CreatedBy       NVARCHAR(50)    NOT NULL  DEFAULT('System'),
+    CreatedDate     DATETIME        NOT NULL  DEFAULT(GETDATE()),
+    ModifiedBy      NVARCHAR(50)    NULL,
+    ModifiedDate    DATETIME        NULL,
+    RowVersion      ROWVERSION      NOT NULL,
+
+    -- 約束
+    CONSTRAINT PK_AuthRelationResourceAction
+        PRIMARY KEY CLUSTERED (ResourceKey, ActionCode),
+
+    CONSTRAINT FK_ARRA_Resource
+        FOREIGN KEY (ResourceKey)
+        REFERENCES [dbo].[AuthResource] (ResourceKey),
+
+    CONSTRAINT FK_ARRA_Action
+        FOREIGN KEY (ActionCode)
+        REFERENCES [dbo].[AuthAction] (ActionCode)
+);
+
+-- 反查：某動作被哪些資源使用
+CREATE NONCLUSTERED INDEX IX_ARRA_ActionLookup
+    ON [dbo].[AuthRelationResourceAction] (ActionCode, IsEnabled)
+    INCLUDE (ResourceKey);
+
+-- UI 渲染：某資源的可用動作
+CREATE NONCLUSTERED INDEX IX_ARRA_ResourceUI
+    ON [dbo].[AuthRelationResourceAction] (ResourceKey, IsEnabled, SortOrder)
+    INCLUDE (ActionCode);
+```
+
+七、 附錄：種子資料初始化腳本
+```sql
+-- 通用動作 × Form 資源 → 自動產生功能目錄
+INSERT INTO [dbo].[AuthRelationResourceAction]
+       (ResourceKey, ActionCode, IsEnabled, SortOrder, CreatedBy)
+SELECT r.ResourceKey,
+       a.ActionCode,
+       1,
+       a.SortOrder,
+       'SYSTEM'
+FROM   [dbo].[AuthAction]   a
+CROSS JOIN [dbo].[AuthResource] r
+WHERE  a.Category      = '通用'
+  AND  a.IsEnabled     = 1
+  AND  r.ResourceType  = 'Form'
+  AND  r.IsActive      = 1
+  AND  NOT EXISTS (
+         SELECT 1
+         FROM   [dbo].[AuthRelationResourceAction] t
+         WHERE  t.ResourceKey = r.ResourceKey
+           AND  t.ActionCode  = a.ActionCode
+       );
+```
+
+八、 附錄：建議 Grant 表新增 FK
+```sql
+ALTER TABLE [dbo].[AuthRelationGrant]
+ADD CONSTRAINT FK_Grant_ResourceAction
+    FOREIGN KEY (ResourceKey, ActionCode)
+    REFERENCES [dbo].[AuthRelationResourceAction] (ResourceKey, ActionCode);
+```
