@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AuthPrincipalGroup – Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>AuthPrincipalGroup（Prototype）</h1>
+        <p class="muted">使用者群組主檔 / Search(Index) + Detail + Add/Edit + Delete（soft: IsActive=0）</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">AppCode</span>
+              <input class="field__input mono" id="qAppCode" name="appCode" disabled />
+              <span class="field__hint">依你確認：固定 PMS、不可為 NULL、不可修改</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">GroupCode (contains)</span>
+              <input class="field__input mono" id="qGroupCode" name="groupCode" placeholder="例如：PROJECT_X" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">GroupName (contains)</span>
+              <input class="field__input" id="qGroupName" name="groupName" placeholder="例如：研發" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsActive</span>
+              <select class="field__input" id="qIsActive" name="isActive">
+                <option value="">（全部）</option>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Tags (contains)</span>
+              <input class="field__input" id="qTags" name="tags" placeholder="逗號分隔字串，模糊比對" />
+            </label>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+            <button class="btn btn--ghost" type="button" id="btnAddNew">Add New</button>
+            <div class="spacer"></div>
+            <div class="muted" id="resultMeta"></div>
+          </div>
+
+          <div class="notice" id="notice" aria-live="polite" hidden></div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="AuthPrincipalGroup search result">
+          <table class="table" id="resultTable">
+            <thead>
+              <tr>
+                <th>GroupId</th>
+                <th>GroupCode</th>
+                <th>GroupName</th>
+                <th>AppCode</th>
+                <th>IsActive</th>
+                <th>ValidFrom</th>
+                <th>ValidTo</th>
+                <th>Tags</th>
+                <th>ModifiedDate</th>
+                <th style="min-width: 210px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="AuthPrincipalGroup detail/edit">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">AuthPrincipalGroup</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <form id="editForm" class="editForm" autocomplete="off">
+              <div class="section">
+                <div class="section__title">Keys</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">GroupId (IDENTITY)</span>
+                    <input class="field__input mono" id="fGroupId" name="groupId" disabled />
+                    <span class="field__hint">新增時由系統產生；僅供顯示</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">GroupCode (UNIQUE)</span>
+                    <input class="field__input mono" id="fGroupCode" name="groupCode" placeholder="例如：CUT_TEAM_A" />
+                    <span class="field__hint">新增後鎖定不可改（關聯核心鍵）</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Basic</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">GroupName</span>
+                    <input class="field__input" id="fGroupName" name="groupName" />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">AppCode</span>
+                    <input class="field__input mono" id="fAppCode" name="appCode" disabled />
+                    <span class="field__hint">依你確認：固定 PMS、不支援 NULL</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">GroupDesc</span>
+                    <input class="field__input" id="fGroupDesc" name="groupDesc" placeholder="用途描述" />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Tags</span>
+                    <input class="field__input" id="fTags" name="tags" placeholder="例如：vendor,project" />
+                    <span class="field__hint">建議逗號分隔；prototype 不做結構化解析</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Flags & Temporal</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">IsActive</span>
+                    <select class="field__input" id="fIsActive" name="isActive">
+                      <option value="1">1 (Active)</option>
+                      <option value="0">0 (Inactive)</option>
+                    </select>
+                    <span class="field__hint">Delete(soft) 會將 IsActive 設為 0</span>
+                  </label>
+
+                  <div class="field">
+                    <span class="field__label">Guardrails</span>
+                    <div class="field__hint">文件：權限計算需包含時間過濾（GETDATE() in ValidFrom/ValidTo）；刪除前需確認無角色關聯。</div>
+                  </div>
+
+                  <label class="field">
+                    <span class="field__label">ValidFrom</span>
+                    <input class="field__input" id="fValidFrom" name="validFrom" type="datetime-local" />
+                    <span class="field__hint">可空；若填需 <= ValidTo（你已確認允許相等）</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ValidTo</span>
+                    <input class="field__input" id="fValidTo" name="validTo" type="datetime-local" />
+                    <span class="field__hint">可空；到期後群組權限自動失效</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Audit</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">CreatedBy</span>
+                    <input class="field__input" id="fCreatedBy" name="createdBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">CreatedDate</span>
+                    <input class="field__input" id="fCreatedDate" name="createdDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedBy</span>
+                    <input class="field__input" id="fModifiedBy" name="modifiedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedDate</span>
+                    <input class="field__input" id="fModifiedDate" name="modifiedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RowVersion</span>
+                    <input class="field__input" id="fRowVersion" name="rowVersion" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="notice notice--error" id="formError" hidden></div>
+            </form>
+          </div>
+
+          <div class="drawer__footer" id="drawerFooter"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

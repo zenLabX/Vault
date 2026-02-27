@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AuthAction – Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>AuthAction（Prototype）</h1>
+        <p class="muted">操作動作主檔 / Search(Index) + Detail + Add/Edit + Delete（soft: IsEnabled）</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">ActionCode</span>
+              <input class="field__input mono" id="qActionCode" name="actionCode" placeholder="例如：VIEW（模糊比對）" />
+              <span class="field__hint">格式：A-Z/0-9/_/-，長度 2–50（prototype 會自動轉大寫）</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">ActionName</span>
+              <input class="field__input" id="qActionName" name="actionName" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Category</span>
+              <select class="field__input" id="qCategory" name="category"></select>
+              <span class="field__hint">依 seed script 固定值；用於權限勾選 UI 分組</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsBasicAction</span>
+              <select class="field__input" id="qIsBasic" name="isBasic">
+                <option value="">（全部）</option>
+                <option value="1">1 (Basic)</option>
+                <option value="0">0 (Non-Basic)</option>
+              </select>
+              <span class="field__hint">Basic 視為核心動作：禁止停用、禁止改碼（允許編輯顯示欄位）</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsEnabled</span>
+              <select class="field__input" id="qIsEnabled" name="isEnabled">
+                <option value="">（全部）</option>
+                <option value="1">Enabled</option>
+                <option value="0">Disabled</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form__row form__row--2">
+            <label class="field">
+              <span class="field__label">SortOrder (min)</span>
+              <input class="field__input" id="qSortMin" name="sortMin" type="number" step="1" placeholder="例如：0" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">SortOrder (max)</span>
+              <input class="field__input" id="qSortMax" name="sortMax" type="number" step="1" placeholder="例如：100" />
+            </label>
+
+            <label class="field" style="grid-column: span 2;">
+              <span class="field__label">Description (contains)</span>
+              <input class="field__input" id="qDesc" name="desc" placeholder="模糊比對" />
+            </label>
+
+            <div class="field">
+              <span class="field__label">Notes</span>
+              <div class="field__hint">文件建議：不要物理刪除動作；改以 IsEnabled=0 停用，保留授權關聯完整性。</div>
+            </div>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+            <button class="btn btn--ghost" type="button" id="btnAddNew">Add New</button>
+            <div class="spacer"></div>
+            <div class="muted" id="resultMeta"></div>
+          </div>
+
+          <div class="notice" id="notice" aria-live="polite" hidden></div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="AuthAction search result">
+          <table class="table" id="resultTable">
+            <thead>
+              <tr>
+                <th>ActionId</th>
+                <th>ActionCode</th>
+                <th>ActionName</th>
+                <th>Category</th>
+                <th>SortOrder</th>
+                <th>IsBasicAction</th>
+                <th>IsEnabled</th>
+                <th>Description</th>
+                <th>ModifiedDate</th>
+                <th style="min-width: 230px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="AuthAction detail/edit">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">AuthAction</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <form id="editForm" class="editForm" autocomplete="off">
+              <div class="section">
+                <div class="section__title">Identity</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">ActionId (IDENTITY)</span>
+                    <input class="field__input mono" id="fActionId" name="actionId" disabled />
+                    <span class="field__hint">資料庫內部流水號；prototype 自動生成</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">ActionCode (UNIQUE)</span>
+                    <input class="field__input mono" id="fActionCode" name="actionCode" placeholder="例如：VIEW" />
+                    <span class="field__hint" id="hintActionCode">全域唯一；建立後不可變更（避免破壞授權關聯）</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">ActionName</span>
+                    <input class="field__input" id="fActionName" name="actionName" />
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">Category</span>
+                    <select class="field__input" id="fCategory" name="category"></select>
+                    <span class="field__hint">用於權限勾選畫面分組與排序</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">SortOrder</span>
+                    <input class="field__input" id="fSortOrder" name="sortOrder" type="number" step="1" />
+                    <span class="field__hint">數值小者在前（影響 UI 排列）</span>
+                  </label>
+
+                  <div class="field">
+                    <span class="field__label">ActionCode State</span>
+                    <div class="field__hint" id="actionCodeState"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Flags</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">IsEnabled</span>
+                    <select class="field__input" id="fIsEnabled" name="isEnabled">
+                      <option value="1">1 (Enabled)</option>
+                      <option value="0">0 (Disabled)</option>
+                    </select>
+                    <span class="field__hint">文件建議以 IsEnabled=0 停用取代物理刪除</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">IsBasicAction</span>
+                    <select class="field__input" id="fIsBasic" name="isBasic">
+                      <option value="1">1 (Basic)</option>
+                      <option value="0">0 (Non-Basic)</option>
+                    </select>
+                    <span class="field__hint">Basic 視為核心動作：禁止停用、禁止改碼（允許編輯顯示欄位）</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Description</div>
+                <textarea class="textarea" id="fDesc" name="desc" rows="4" placeholder="描述副作用或適用場景"></textarea>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Audit</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">CreatedBy</span>
+                    <input class="field__input" id="fCreatedBy" name="createdBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">CreatedDate</span>
+                    <input class="field__input" id="fCreatedDate" name="createdDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedBy</span>
+                    <input class="field__input" id="fModifiedBy" name="modifiedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedDate</span>
+                    <input class="field__input" id="fModifiedDate" name="modifiedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RowVersion</span>
+                    <input class="field__input" id="fRowVersion" name="rowVersion" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="notice notice--error" id="formError" hidden></div>
+            </form>
+          </div>
+
+          <div class="drawer__footer" id="drawerFooter"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

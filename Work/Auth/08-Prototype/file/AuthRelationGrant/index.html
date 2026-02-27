@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AuthRelationGrant – Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>AuthRelationGrant（Prototype）</h1>
+        <p class="muted">授權設定表 / Role × Resource × Action → Allow/Deny（Hybrid RBAC/ABAC）</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">RoleCode</span>
+              <input class="field__input mono" id="qRoleCode" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">ResourceKey</span>
+              <input class="field__input mono" id="qResourceKey" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">ActionCode</span>
+              <input class="field__input mono" id="qActionCode" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Effect</span>
+              <select class="field__input" id="qEffect">
+                <option value="">（全部）</option>
+                <option value="1">ALLOW</option>
+                <option value="0">DENY</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsActive</span>
+              <select class="field__input" id="qIsActive">
+                <option value="">（全部）</option>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form__row" style="margin-top:12px;">
+            <label class="field" style="grid-column: span 2;">
+              <span class="field__label">ConditionJson / Remark (contains)</span>
+              <input class="field__input" id="qText" placeholder="模糊比對" />
+              <span class="field__hint">ConditionJson 建議只在應用層解析；DB 不應用 JSON_VALUE 做過濾</span>
+            </label>
+            <div class="field" style="grid-column: span 3;">
+              <span class="field__label">Decision Note</span>
+              <div class="field__hint">文件：Deny Override（任何角色命中 Deny → 最終拒絕） / Explicit Allow / Default Deny</div>
+              <div class="field__hint">UniqueRule：同 Role/Resource/Action 在「ConditionJson=NULL 且 ValidFrom/ValidTo=NULL」只能一筆（soft delete 也不會放行）</div>
+            </div>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+            <button class="btn btn--ghost" type="button" id="btnAddNew">Add New</button>
+            <div class="spacer"></div>
+            <div class="muted" id="resultMeta"></div>
+          </div>
+
+          <div class="notice" id="notice" aria-live="polite" hidden></div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="AuthRelationGrant search result">
+          <table class="table" id="resultTable">
+            <thead>
+              <tr>
+                <th>GrantCode</th>
+                <th>RoleCode</th>
+                <th>ResourceKey</th>
+                <th>ActionCode</th>
+                <th>Effect</th>
+                <th>IsActive</th>
+                <th>ValidFrom</th>
+                <th>ValidTo</th>
+                <th>HasCondition</th>
+                <th>Remark</th>
+                <th style="min-width: 230px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="AuthRelationGrant detail/edit">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">AuthRelationGrant</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <form id="editForm" class="editForm" autocomplete="off">
+              <div class="section">
+                <div class="section__title">Identity</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">GrantCode (PK)</span>
+                    <input class="field__input mono" id="fGrantCode" disabled />
+                    <span class="field__hint">新增時產生；Edit 時不可改</span>
+                  </label>
+                  <div class="field">
+                    <span class="field__label">Cache Note</span>
+                    <div class="field__hint">文件：Grant 異動需清除 해당 Role 的 Redis 權限快取（prototype 僅提示）。</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">RBAC Tuple（Edit 時鎖定）</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">RoleCode</span>
+                    <select class="field__input mono" id="fRoleCode"></select>
+                    <span class="field__hint">FK → AuthRole.RoleCode</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ResourceKey</span>
+                    <select class="field__input mono" id="fResourceKey"></select>
+                    <span class="field__hint">FK → AuthResource.ResourceKey</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ActionCode</span>
+                    <select class="field__input mono" id="fActionCode"></select>
+                    <span class="field__hint">FK → AuthAction.ActionCode</span>
+                  </label>
+                </div>
+                <div class="notice notice--warn">UniqueRule：同 Role/Resource/Action 在「無條件且無期限」只能一筆；若要多筆，需加 ConditionJson 或 ValidFrom/ValidTo 讓規則可區分。</div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Decision</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">Effect</span>
+                    <select class="field__input" id="fEffect">
+                      <option value="1">1 (ALLOW)</option>
+                      <option value="0">0 (DENY)</option>
+                    </select>
+                    <span class="field__hint">Deny Override：任何角色命中 Deny → 最終拒絕</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">IsActive</span>
+                    <select class="field__input" id="fIsActive">
+                      <option value="1">1 (Active)</option>
+                      <option value="0">0 (Inactive)</option>
+                    </select>
+                    <span class="field__hint">Delete(soft) 會將 IsActive 設為 0</span>
+                  </label>
+                </div>
+
+                <label class="field">
+                  <span class="field__label">ConditionJson（ABAC, optional）</span>
+                  <textarea class="field__textarea mono" id="fConditionJson" rows="7" placeholder='例如：{"Factory":["T1"],"AmountLimit":5000}'></textarea>
+                  <span class="field__hint">文件 guardrail：寫入前需驗證 JSON 格式；效能：DB 不應 JSON_VALUE 過濾</span>
+                </label>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Temporal</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">ValidFrom</span>
+                    <input class="field__input" id="fValidFrom" type="datetime-local" />
+                    <span class="field__hint">可空；若填需 <= ValidTo</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ValidTo</span>
+                    <input class="field__input" id="fValidTo" type="datetime-local" />
+                    <span class="field__hint">可空；若填需 >= ValidFrom</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Remark</div>
+                <label class="field">
+                  <span class="field__label">Remark</span>
+                  <input class="field__input" id="fRemark" placeholder="例如：稽核期間暫時開放" />
+                </label>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Audit</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">CreatedBy</span>
+                    <input class="field__input" id="fCreatedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">CreatedDate</span>
+                    <input class="field__input" id="fCreatedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedBy</span>
+                    <input class="field__input" id="fModifiedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedDate</span>
+                    <input class="field__input" id="fModifiedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RowVersion</span>
+                    <input class="field__input" id="fRowVersion" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="notice notice--error" id="formError" hidden></div>
+            </form>
+          </div>
+
+          <div class="drawer__footer" id="drawerFooter"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

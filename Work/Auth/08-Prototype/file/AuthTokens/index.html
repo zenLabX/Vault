@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AuthTokens – Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>AuthTokens（Prototype）</h1>
+        <p class="muted">權杖管理表 / Stateful JWT / Search(Index) + Detail + Add/Edit + Delete=Revoke</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">AppCode</span>
+              <input class="field__input mono" id="qAppCode" disabled />
+              <span class="field__hint">依確認：固定且不可為 NULL</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Source</span>
+              <input class="field__input mono" id="qSource" disabled />
+              <span class="field__hint">依確認：固定且不可為 NULL</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">UserId</span>
+              <input class="field__input mono" id="qUserId" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">TokenHash (hex)</span>
+              <input class="field__input mono" id="qTokenHash" placeholder="前綴/模糊比對" />
+              <span class="field__hint">文件：查詢必須走 TokenHash，不應用 Token 長字串</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsRevoked</span>
+              <select class="field__input" id="qIsRevoked">
+                <option value="">（全部）</option>
+                <option value="0">0 (Valid)</option>
+                <option value="1">1 (Revoked)</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+            <button class="btn btn--ghost" type="button" id="btnAddNew">Add New</button>
+            <div class="spacer"></div>
+            <div class="muted" id="resultMeta"></div>
+          </div>
+
+          <div class="notice" id="notice" aria-live="polite" hidden></div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="AuthTokens search result">
+          <table class="table" id="resultTable">
+            <thead>
+              <tr>
+                <th>TokenId</th>
+                <th>UserId</th>
+                <th>AppCode</th>
+                <th>Source</th>
+                <th>IssuedAt</th>
+                <th>ExpiresAt</th>
+                <th>IsRevoked</th>
+                <th>EffectiveUserId</th>
+                <th>TokenHash</th>
+                <th style="min-width: 250px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="AuthTokens detail/edit">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">AuthTokens</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <form id="editForm" class="editForm" autocomplete="off">
+              <div class="section">
+                <div class="section__title">Identity</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">TokenId</span>
+                    <input class="field__input mono" id="fTokenId" disabled />
+                    <span class="field__hint">IDENTITY；Add 時由系統產生</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">UserId</span>
+                    <select class="field__input mono" id="fUserId"></select>
+                    <span class="field__hint">FK → AuthPrincipalUser.UserId（Edit 時鎖定）</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Context</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">AppCode</span>
+                    <input class="field__input mono" id="fAppCode" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Source</span>
+                    <input class="field__input mono" id="fSource" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">EffectiveUserId（Impersonation）</span>
+                    <input class="field__input mono" id="fEffectiveUserId" placeholder="可空" />
+                    <span class="field__hint">代理登入：此欄記錄實際操作者（責任歸屬）</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Token / Hash</div>
+                <label class="field">
+                  <span class="field__label">Token（僅供稽核/除錯，不作查詢）</span>
+                  <textarea class="field__textarea mono" id="fToken" rows="5" placeholder="JWT string ..."></textarea>
+                  <span class="field__hint">文件：禁止用 Token 長字串做 WHERE；只能走 TokenHash</span>
+                </label>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">TokenHash (hex, 64 chars)</span>
+                    <input class="field__input mono" id="fTokenHash" disabled />
+                    <span class="field__hint">依你確認：新增時由 Token 自動計算</span>
+                  </label>
+                  <div class="field">
+                    <span class="field__label">Hash Note</span>
+                    <div class="field__hint">若瀏覽器不支援 WebCrypto，prototype 會用「可重現的假雜湊」代替（spec 會註記）。</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Lifecycle</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">IssuedAt</span>
+                    <input class="field__input mono" id="fIssuedAt" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ExpiresAt</span>
+                    <input class="field__input" id="fExpiresAt" type="datetime-local" />
+                    <span class="field__hint">文件約束：ExpiresAt 必須 > IssuedAt</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">IsRevoked</span>
+                    <select class="field__input" id="fIsRevoked">
+                      <option value="0">0 (Valid)</option>
+                      <option value="1">1 (Revoked)</option>
+                    </select>
+                    <span class="field__hint">Delete 按鈕會直接設為 Revoked（不可復原）</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Audit</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">CreatedBy</span>
+                    <input class="field__input" id="fCreatedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">CreatedDate</span>
+                    <input class="field__input" id="fCreatedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedBy</span>
+                    <input class="field__input" id="fModifiedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedDate</span>
+                    <input class="field__input" id="fModifiedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RowVersion</span>
+                    <input class="field__input" id="fRowVersion" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="notice notice--error" id="formError" hidden></div>
+            </form>
+          </div>
+
+          <div class="drawer__footer" id="drawerFooter"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

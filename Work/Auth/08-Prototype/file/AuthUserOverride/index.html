@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AuthUserOverride – Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>AuthUserOverride（Prototype）</h1>
+        <p class="muted">個人覆寫表 / Search(Index) + Detail + Add/Edit + Delete（soft）</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">UserId</span>
+              <input class="field__input mono" id="qUserId" name="userId" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">ResourceKey</span>
+              <input class="field__input mono" id="qResourceKey" name="resourceKey" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">ActionCode</span>
+              <input class="field__input mono" id="qActionCode" name="actionCode" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Effect</span>
+              <select class="field__input" id="qEffect" name="effect">
+                <option value="">（全部）</option>
+                <option value="1">ALLOW</option>
+                <option value="0">DENY</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">IsActive</span>
+              <select class="field__input" id="qIsActive" name="isActive">
+                <option value="">（全部）</option>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+            <button class="btn btn--ghost" type="button" id="btnAddNew">Add New</button>
+            <div class="spacer"></div>
+            <div class="muted" id="resultMeta"></div>
+          </div>
+
+          <div class="notice" id="notice" aria-live="polite" hidden></div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="AuthUserOverride search result">
+          <table class="table" id="resultTable">
+            <thead>
+              <tr>
+                <th>UserId</th>
+                <th>ResourceKey</th>
+                <th>ActionCode</th>
+                <th>Effect</th>
+                <th>ValidFrom</th>
+                <th>ValidTo</th>
+                <th>IsActive</th>
+                <th>Reason</th>
+                <th>ModifiedDate</th>
+                <th style="min-width: 210px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="AuthUserOverride detail/edit">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">AuthUserOverride</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <form id="editForm" class="editForm" autocomplete="off">
+              <div class="section">
+                <div class="section__title">Composite Key (PK)</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">UserId (PK)</span>
+                    <select class="field__input mono" id="fUserId" name="userId"></select>
+                    <span class="field__hint">FK → AuthPrincipalUser.UserId；Edit 時鎖定不可改</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">ResourceKey (PK)</span>
+                    <select class="field__input mono" id="fResourceKey" name="resourceKey"></select>
+                    <span class="field__hint">FK → AuthResource.ResourceKey；Edit 時鎖定不可改</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">ActionCode (PK)</span>
+                    <select class="field__input mono" id="fActionCode" name="actionCode"></select>
+                    <span class="field__hint">FK → AuthAction.ActionCode；Edit 時鎖定不可改</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Effect & Condition</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">Effect</span>
+                    <select class="field__input" id="fEffect" name="effect">
+                      <option value="1">1 (ALLOW)</option>
+                      <option value="0">0 (DENY)</option>
+                    </select>
+                    <span class="field__hint">優先級高於 Role；DENY 命中可 fast-fail</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">IsActive</span>
+                    <select class="field__input" id="fIsActive" name="isActive">
+                      <option value="1">1 (Active)</option>
+                      <option value="0">0 (Inactive)</option>
+                    </select>
+                    <span class="field__hint">Delete(soft) 會將 IsActive 設為 0</span>
+                  </label>
+                </div>
+
+                <label class="field">
+                  <span class="field__label">ConditionJson（ABAC, optional）</span>
+                  <textarea class="field__textarea mono" id="fConditionJson" name="conditionJson" rows="7" placeholder='例如：{"Plant":"A"}'></textarea>
+                  <span class="field__hint">依你確認：儲存時會做 JSON 格式檢查（可空，但不可是無效 JSON）</span>
+                </label>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Temporal</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">ValidFrom</span>
+                    <input class="field__input" id="fValidFrom" name="validFrom" type="datetime-local" />
+                    <span class="field__hint">可空；若填需 <= ValidTo</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">ValidTo</span>
+                    <input class="field__input" id="fValidTo" name="validTo" type="datetime-local" />
+                    <span class="field__hint">可空；建議臨時授權要填</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Reason（必填）</div>
+                <label class="field">
+                  <span class="field__label">Reason</span>
+                  <input class="field__input" id="fReason" name="reason" placeholder="例如：CEO 特批 / 離職前風險控管" />
+                  <span class="field__hint">文件 guardrail：原因必填，避免三個月後無法稽核</span>
+                </label>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Audit</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">CreatedBy</span>
+                    <input class="field__input" id="fCreatedBy" name="createdBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">CreatedDate</span>
+                    <input class="field__input" id="fCreatedDate" name="createdDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedBy</span>
+                    <input class="field__input" id="fModifiedBy" name="modifiedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedDate</span>
+                    <input class="field__input" id="fModifiedDate" name="modifiedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RowVersion</span>
+                    <input class="field__input" id="fRowVersion" name="rowVersion" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="notice notice--error" id="formError" hidden></div>
+            </form>
+          </div>
+
+          <div class="drawer__footer" id="drawerFooter"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

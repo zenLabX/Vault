@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AuthRelationPrincipalRole – Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>AuthRelationPrincipalRole（Prototype）</h1>
+        <p class="muted">主體（User / Group）→ 角色（Role）指派關聯（RBAC Assignment）</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="panel">
+        <form class="form" id="queryForm" autocomplete="off">
+          <div class="form__row">
+            <label class="field">
+              <span class="field__label">AppCode</span>
+              <input class="field__input mono" id="qAppCode" disabled />
+              <span class="field__hint">依你的決策：固定 PMS 且不可為 NULL</span>
+            </label>
+
+            <label class="field">
+              <span class="field__label">PrincipalType</span>
+              <select class="field__input" id="qPrincipalType">
+                <option value="">（全部）</option>
+                <option value="USER">USER</option>
+                <option value="GROUP">GROUP</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">UserId (contains)</span>
+              <input class="field__input mono" id="qUserId" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">GroupCode (contains)</span>
+              <input class="field__input mono" id="qGroupCode" placeholder="模糊比對" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">RoleCode</span>
+              <input class="field__input mono" id="qRoleCode" placeholder="模糊比對" />
+            </label>
+          </div>
+
+          <div class="form__row" style="margin-top:12px;">
+            <label class="field" style="grid-column: span 2;">
+              <span class="field__label">RelationCode (contains)</span>
+              <input class="field__input mono" id="qRelationCode" placeholder="模糊比對" />
+              <span class="field__hint">RelationCode：業務唯一碼（例如 RPR-USER01-ADMIN）</span>
+            </label>
+            <label class="field">
+              <span class="field__label">IsActive</span>
+              <select class="field__input" id="qIsActive">
+                <option value="">（全部）</option>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </label>
+            <div class="field" style="grid-column: span 2;">
+              <span class="field__label">Guardrails</span>
+              <div class="field__hint">文件：XOR（UserId 與 GroupCode 二選一） / Filtered Unique Index / 異動需失效受影響使用者權限快取 / RowVersion</div>
+            </div>
+          </div>
+
+          <div class="form__actions">
+            <button class="btn" type="submit">查詢</button>
+            <button class="btn btn--ghost" type="button" id="btnAddNew">Add New</button>
+            <div class="spacer"></div>
+            <div class="muted" id="resultMeta"></div>
+          </div>
+
+          <div class="notice" id="notice" aria-live="polite" hidden></div>
+        </form>
+
+        <div class="tableWrap" role="region" aria-label="AuthRelationPrincipalRole search result">
+          <table class="table" id="resultTable">
+            <thead>
+              <tr>
+                <th>PrincipalRoleCode</th>
+                <th>RelationCode</th>
+                <th>PrincipalType</th>
+                <th>UserId</th>
+                <th>GroupCode</th>
+                <th>RoleCode</th>
+                <th>AppCode</th>
+                <th>Priority</th>
+                <th>IsActive</th>
+                <th>ValidFrom</th>
+                <th>ValidTo</th>
+                <th style="min-width: 230px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer__overlay" id="drawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="AuthRelationPrincipalRole detail/edit">
+          <div class="drawer__header">
+            <div>
+              <div class="drawer__title" id="drawerTitle">AuthRelationPrincipalRole</div>
+              <div class="drawer__subtitle muted" id="drawerSubTitle"></div>
+            </div>
+            <button class="iconBtn" id="drawerClose" aria-label="Close">×</button>
+          </div>
+
+          <div class="drawer__body">
+            <form id="editForm" class="editForm" autocomplete="off">
+              <div class="section">
+                <div class="section__title">Identity</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">PrincipalRoleCode (PK)</span>
+                    <input class="field__input mono" id="fPrincipalRoleCode" disabled />
+                    <span class="field__hint">新增時產生；Edit 時不可改</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RelationCode (Unique)</span>
+                    <input class="field__input mono" id="fRelationCode" />
+                    <span class="field__hint">Edit 時鎖定不可改（避免業務碼混亂）</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Assignment (XOR)</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">PrincipalType</span>
+                    <select class="field__input" id="fPrincipalType">
+                      <option value="USER">USER</option>
+                      <option value="GROUP">GROUP</option>
+                    </select>
+                    <span class="field__hint">文件 XOR：約束一筆只能屬於 User 或 Group（擇一）</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RoleCode</span>
+                    <select class="field__input mono" id="fRoleCode"></select>
+                    <span class="field__hint">FK → AuthRole.RoleCode（Edit 鎖定）</span>
+                  </label>
+
+                  <label class="field" id="userField">
+                    <span class="field__label">UserId</span>
+                    <select class="field__input mono" id="fUserId"></select>
+                    <span class="field__hint">FK → AuthPrincipalUser.UserId（Edit 鎖定）</span>
+                  </label>
+
+                  <label class="field" id="groupField" hidden>
+                    <span class="field__label">GroupCode</span>
+                    <select class="field__input mono" id="fGroupCode"></select>
+                    <span class="field__hint">FK → AuthPrincipalGroup.GroupCode（Edit 鎖定）</span>
+                  </label>
+                </div>
+
+                <div class="notice notice--warn">注意：此表異動（指派/撤銷角色）需立即失效受影響使用者的 Redis 權限快取（prototype 僅提示）。</div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Scope & Priority</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">AppCode</span>
+                    <input class="field__input mono" id="fAppCode" disabled />
+                    <span class="field__hint">依你的決策：固定 PMS 且不可為 NULL（Edit 鎖定）</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Priority</span>
+                    <input class="field__input mono" id="fPriority" type="number" step="1" />
+                    <span class="field__hint">文件：衝突時 Priority 值較大者優先</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field__label">IsActive</span>
+                    <select class="field__input" id="fIsActive">
+                      <option value="1">1 (Active)</option>
+                      <option value="0">0 (Inactive)</option>
+                    </select>
+                    <span class="field__hint">Delete(soft) 會將 IsActive 設為 0；Unique 不因 Inactive 放行</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Temporal</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">ValidFrom</span>
+                    <input class="field__input" id="fValidFrom" type="datetime-local" />
+                    <span class="field__hint">可空；若填需 <= ValidTo（查詢需做 GETDATE() 範圍過濾）</span>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ValidTo</span>
+                    <input class="field__input" id="fValidTo" type="datetime-local" />
+                    <span class="field__hint">可空；若填需 >= ValidFrom</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Remark</div>
+                <label class="field">
+                  <span class="field__label">Remark</span>
+                  <input class="field__input" id="fRemark" placeholder="例如：臨時指派主管角色" />
+                </label>
+              </div>
+
+              <div class="section">
+                <div class="section__title">Audit</div>
+                <div class="grid2">
+                  <label class="field">
+                    <span class="field__label">CreatedBy</span>
+                    <input class="field__input" id="fCreatedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">CreatedDate</span>
+                    <input class="field__input" id="fCreatedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedBy</span>
+                    <input class="field__input" id="fModifiedBy" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">ModifiedDate</span>
+                    <input class="field__input" id="fModifiedDate" disabled />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">RowVersion</span>
+                    <input class="field__input" id="fRowVersion" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="notice notice--error" id="formError" hidden></div>
+            </form>
+          </div>
+
+          <div class="drawer__footer" id="drawerFooter"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
