@@ -183,6 +183,8 @@
   },
   "active": "4b51cc6b5448c470",
   "lastOpenFiles": [
+    "Work/Auth/03-Implementation/PrincipalGroupModuleSpec.md",
+    "Work/Auth/03-Implementation/ResourceModuleSpec.md",
     "Work/Auth/03-Implementation/UserOverrideModuleSpec.md",
     "Work/Auth/03-Implementation/RelationGrantModuleSpec.md",
     "Work/Auth/03-Implementation/UserGroupRoleModuleSpec.md",
@@ -208,8 +210,6 @@
     "Work/Auth/01-Knowledge/AuthTokens.md",
     "Work/Auth/01-Knowledge/AuthUserOverride.md",
     "Work/Auth/01-Knowledge/AuthRelationGrant.md",
-    "Work/Auth/01-Knowledge/AuthAction.md",
-    "Work/Auth/01-Knowledge/AuthPrincipalGroup.md",
     "Work/Auth/08-Prototype/file/AuthRelationPrincipalRole/app.js",
     "Work/Auth/08-Prototype/file/AuthRelationPrincipalRole/styles.css",
     "Work/Auth/08-Prototype/file/AuthRelationPrincipalRole/index.html",
